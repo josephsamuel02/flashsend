@@ -19,7 +19,9 @@
         "NSPhotoLibraryUsageDescription": "SendApp needs access to your photo library to share photos and videos.",
         "NSCameraUsageDescription": "SendApp needs camera access to scan QR codes for device pairing.",
         "NSLocalNetworkUsageDescription": "SendApp uses your local network to transfer files directly between devices on the same WiFi network.",
-        "NSBonjourServices": ["_sendapp._tcp"]
+        "NSBonjourServices": [
+          "_sendapp._tcp"
+        ]
       }
     },
     "android": {
@@ -43,7 +45,10 @@
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN"
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION"
       ]
     },
     "web": {
@@ -59,6 +64,11 @@
           "isAccessMediaLocationEnabled": true
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a3cfcde8-1aff-4fcd-921e-8c088167f269"
+      }
+    }
   }
 }
