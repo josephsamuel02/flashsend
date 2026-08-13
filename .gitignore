@@ -1,0 +1,104 @@
+# Dependencies - NEVER push (reinstalled via npm install)
+node_modules/
+.pnpm-debug.log*
+.pnp/
+.pnp.js
+.npm/
+.eslintcache
+
+# Expo - generated
+.expo/
+.expo-shared/
+expo-env.d.ts
+
+# Build outputs - generated via expo export / prebuild
+dist/
+dist-test/
+web-build/
+build/
+.next/
+out/
+expo-export/
+
+# Native prebuild - generated via `npx expo prebuild` (commit only if bare workflow)
+# Uncomment if you want to ignore generated native projects:
+/android/
+/ios/
+# Pods - iOS dependencies
+# ios/Pods/
+
+# Metro cache
+.metro-health-check*
+.metro/
+.cache/
+
+# Debug logs - NEVER push
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+lerna-debug.*
+pnpm-debug.*
+*.log
+logs/
+
+# Env files - contain secrets, NEVER push
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# OS - NEVER push
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE / Editor - personal, NEVER push
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*~
+
+# Testing / Coverage - generated
+coverage/
+.nyc_output/
+
+# Temporary
+*.tmp
+*.temp
+tmp/
+temp/
+.tmp/
+
+# Keys / Secrets - NEVER push
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+*.keystore
+
+# Pack
+*.tgz
+.yarn-integrity
+
+# TypeScript
+*.tsbuildinfo

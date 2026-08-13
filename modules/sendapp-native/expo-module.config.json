@@ -1,0 +1,7 @@
+{
+  "name": "SendappNative",
+  "platforms": ["android"],
+  "android": {
+    "modules": ["expo.modules.sendappnative.SendappNativeModule"]
+  }
+}
