@@ -21,6 +21,8 @@ import { useTransferStore, TransferFile } from '../store/transferStore';
 import { downloadAllFiles, PeerConnection } from '../networking/client';
 import { stopServer } from '../networking/server';
 import { Colors, Spacing, FontSize, BorderRadius } from '../theme/colors';
+import { stopHotspot } from 'flash-send-hotspot';
+import { AppState, Platform } from 'react-native';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -139,6 +141,19 @@ export default function TransferScreen() {
         .then(() => downloadAllFiles(peer, manifestFiles, destDir))
         .catch(console.error);
     }
+    // Phase 5: AppState listener — hotspot is tied to app lifecycle
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next.match(/inactive|background/)) {
+        console.log('[Transfer] App backgrounded with active transfer');
+      }
+    });
+    return () => {
+      sub.remove();
+      // Clean up hotspot on unmount if still active (Android sender case)
+      if (Platform.OS === 'android') {
+        try { stopHotspot(); } catch {}
+      }
+    };
   }, []);
 
   const allDone = files.every((f) => f.status === 'done' || f.status === 'cancelled' || f.status === 'error');
@@ -148,6 +163,14 @@ export default function TransferScreen() {
 
   const handleDone = () => {
     stopServer();
+    if (Platform.OS === 'android') {
+      try { stopHotspot(); } catch {}
+      // Release scoped WiFi bind if we forced it on receiver
+      try {
+        const WifiManager = require('react-native-wifi-reborn').default;
+        (WifiManager as any).forceWifiUsageWithOptions?.(false, { noInternet: false });
+      } catch {}
+    }
     clearSession();
     (navigation as any).navigate('Main');
   };

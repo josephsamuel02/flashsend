@@ -1,45 +1,45 @@
 // src/theme/colors.ts
-// Design system color tokens
+// Design system color tokens for Flash Send
 
 export const Colors = {
-  // Backgrounds
-  background: '#0A0A1A',
-  surface: '#12122A',
-  surfaceElevated: '#1A1A36',
-  surfaceBorder: '#2A2A4A',
+  // Backgrounds - white for most of the app, royal blue for navigation
+  background: '#FFFFFF',
+  surface: '#FFFFFF',
+  surfaceElevated: '#F5F5F5',
+  surfaceBorder: '#E0E0E0',
 
-  // Accent
-  primary: '#6C63FF',
-  primaryLight: '#8B85FF',
-  primaryDark: '#4C43DF',
-  primaryGlow: 'rgba(108, 99, 255, 0.25)',
+  // Royal Blue - primary color for navigation and accents
+  primary: '#4169E1', // RoyalBlue
+  primaryLight: '#6487E8',
+  primaryDark: '#2E50B3',
+  primaryGlow: 'rgba(65, 105, 225, 0.2)',
 
-  // Secondary
-  secondary: '#FF6584',
-  secondaryLight: '#FF85A0',
+  // Secondary - same royal blue theme
+  secondary: '#4169E1',
+  secondaryLight: '#6487E8',
 
   // Semantic
-  success: '#00D4AA',
-  successDark: '#00A88A',
-  warning: '#FFB800',
-  error: '#FF4757',
-  errorDark: '#CC3344',
+  success: '#10B981',
+  successDark: '#059669',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  errorDark: '#DC2626',
 
   // Text
-  textPrimary: '#FFFFFF',
-  textSecondary: '#A0A0C0',
-  textMuted: '#606080',
-  textDisabled: '#404060',
+  textPrimary: '#1F2937', // Dark gray for readability on white
+  textSecondary: '#6B7280',
+  textMuted: '#9CA3AF',
+  textDisabled: '#D1D5DB',
 
-  // FAB colors
-  fabSend: '#6C63FF',
-  fabReceive: '#00D4AA',
+  // FAB colors - royal blue with white icons
+  fabSend: '#4169E1',
+  fabReceive: '#4169E1',
 
   // Gradients (as arrays for LinearGradient)
-  gradientPrimary: ['#6C63FF', '#4C43DF'] as const,
-  gradientSecondary: ['#FF6584', '#CC3344'] as const,
-  gradientSuccess: ['#00D4AA', '#00A88A'] as const,
-  gradientCard: ['#1A1A36', '#12122A'] as const,
+  gradientPrimary: ['#4169E1', '#2E50B3'] as const,
+  gradientSecondary: ['#4169E1', '#2E50B3'] as const,
+  gradientSuccess: ['#10B981', '#059669'] as const,
+  gradientCard: ['#FFFFFF', '#F5F5F5'] as const,
 };
 
 export const Spacing = {
@@ -68,3 +68,13 @@ export const FontSize = {
   xxl: 24,
   heading: 28,
 };
+
+export const FontFamily = {
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semiBold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
+  extraBold: 'Inter_800ExtraBold',
+  display: 'Outfit_700Bold',
+  displayExtra: 'Outfit_800ExtraBold',
+} as const;

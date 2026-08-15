@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelectionStore, SelectedFile } from '../../store/selectionStore';
 import SelectionHeader from '../../components/SelectionHeader';
 import PermissionGate from '../../components/PermissionGate';
@@ -25,6 +26,7 @@ const CELL_SIZE = (width - Spacing.sm * 2) / COLUMNS - 2;
 const PAGE_SIZE = 60;
 
 export default function PhotosTab() {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [endCursor, setEndCursor] = useState<string | undefined>(undefined);
@@ -86,9 +88,17 @@ export default function PhotosTab() {
   };
 
   const handlePress = (asset: MediaLibrary.Asset) => {
-    if (Object.keys(selectedFiles).length > 0) {
-      handleLongPress(asset);
-    }
+    // Auto-select item on tap
+    const file: SelectedFile = {
+      id: asset.id,
+      name: asset.filename,
+      uri: asset.uri,
+      size: 0,
+      mimeType: 'image/*',
+      tab: 'Photos',
+      thumbnail: asset.uri,
+    };
+    toggleFile(file);
   };
 
   const handleSelectAll = () => {
@@ -139,7 +149,7 @@ export default function PhotosTab() {
         keyExtractor={(item) => item.id}
         numColumns={COLUMNS}
         renderItem={renderItem}
-        contentContainerStyle={styles.grid}
+        contentContainerStyle={[styles.grid, { paddingBottom: Math.max(insets.bottom, 16) + 88 }]}
         onEndReached={() => hasMore && loadPhotos(endCursor)}
         onEndReachedThreshold={0.5}
         windowSize={5}

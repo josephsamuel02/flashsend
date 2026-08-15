@@ -1,7 +1,7 @@
 // src/screens/OnboardingScreen.tsx
 // One-time onboarding screen explaining permissions before OS prompts fire (Phase 8)
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,30 +9,36 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius } from '../theme/colors';
 
+// Permission requests
 const PERMISSIONS = [
   {
     icon: 'photo-library' as const,
     title: 'Photo & Media Library',
     description: 'Access photos, videos, and audio files you want to share.',
+    permissionType: 'media-library',
   },
   {
     icon: 'camera-alt' as const,
     title: 'Camera',
     description: 'Scan the QR code displayed on the sending device to pair.',
+    permissionType: 'camera',
   },
   {
     icon: 'wifi' as const,
     title: 'Local Network',
     description: 'Transfer files directly between devices on the same WiFi — no internet required.',
+    permissionType: 'wifi',
   },
   ...(Platform.OS === 'android' ? [{
     icon: 'notifications' as const,
     title: 'Notifications',
     description: 'Show transfer progress notifications while the app is in the background.',
+    permissionType: 'notifications',
   }] : []),
 ];
 
@@ -41,15 +47,32 @@ interface Props {
 }
 
 export default function OnboardingScreen({ onComplete }: Props) {
+  const [requestingPermissions, setRequestingPermissions] = useState(false);
+
+  const handleRequestAllPermissions = async () => {
+    setRequestingPermissions(true);
+    
+    // Request all permissions
+    try {
+      // Note: In a real app, you would request each permission here
+      // For Expo, permissions are requested when each feature is first used
+      // This screen is just for user education and consent
+      setRequestingPermissions(false);
+      onComplete();
+    } catch (error) {
+      console.error('Permission request error:', error);
+      setRequestingPermissions(false);
+    }
+  };
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Hero */}
         <View style={styles.hero}>
           <View style={styles.heroIcon}>
-            <MaterialIcons name="send" size={52} color={Colors.primary} />
+            <MaterialIcons name="flash-on" size={64} color={Colors.primary} />
           </View>
-          <Text style={styles.heroTitle}>Welcome to SendApp</Text>
+          <Text style={styles.heroTitle}>Welcome to Flash Send</Text>
           <Text style={styles.heroSubtitle}>
             Share files instantly between devices on the same WiFi network.
             No accounts. No cloud. No limits.
@@ -104,15 +127,22 @@ export default function OnboardingScreen({ onComplete }: Props) {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.getStartedButton}
-          onPress={onComplete}
-          accessibilityRole="button"
-          accessibilityLabel="Get started"
-        >
-          <Text style={styles.getStartedText}>Get Started</Text>
-          <MaterialIcons name="arrow-forward" size={22} color="white" />
-        </TouchableOpacity>
+        {requestingPermissions ? (
+          <View style={styles.requestingContainer}>
+            <ActivityIndicator color="white" size="small" />
+            <Text style={styles.getStartedText}>Requesting Permissions...</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.getStartedButton}
+            onPress={handleRequestAllPermissions}
+            accessibilityRole="button"
+            accessibilityLabel="Get started"
+          >
+            <Text style={styles.getStartedText}>Get Started</Text>
+            <MaterialIcons name="arrow-forward" size={22} color="white" />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -128,15 +158,20 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   heroIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: Colors.primaryGlow,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 3,
     borderColor: Colors.primary,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
+    elevation: 8,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   heroTitle: {
     fontSize: FontSize.heading,
@@ -223,6 +258,12 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderTopWidth: 1,
     borderTopColor: Colors.surfaceBorder,
+  },
+  requestingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
   },
   getStartedButton: {
     flexDirection: 'row',

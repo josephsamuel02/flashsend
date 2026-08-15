@@ -11,9 +11,10 @@ import {
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelectionStore, SelectedFile } from '../../store/selectionStore';
 import SelectionHeader from '../../components/SelectionHeader';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../theme/colors';
+import { Colors, Spacing, FontSize, BorderRadius, FontFamily } from '../../theme/colors';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -33,6 +34,7 @@ function getFileIcon(mimeType: string): keyof typeof MaterialIcons.glyphMap {
 }
 
 export default function FilesTab() {
+  const insets = useSafeAreaInsets();
   const [pickedFiles, setPickedFiles] = useState<SelectedFile[]>([]);
   const { toggleFile, isSelected, selectAll, clearSelection, selectedFiles } = useSelectionStore();
 
@@ -112,7 +114,7 @@ export default function FilesTab() {
         data={pickedFiles}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={pickedFiles.length === 0 ? styles.emptyContainer : styles.list}
+        contentContainerStyle={pickedFiles.length === 0 ? styles.emptyContainer : [styles.list, { paddingBottom: Math.max(insets.bottom, 16) + 96 }]}
         ListEmptyComponent={
           <View style={styles.empty}>
             <MaterialIcons name="folder-open" size={64} color={Colors.surfaceBorder} />
@@ -125,7 +127,7 @@ export default function FilesTab() {
       />
 
       <TouchableOpacity
-        style={styles.pickButton}
+        style={[styles.pickButton, { bottom: Math.max(insets.bottom, 16) + 88 }]}
         onPress={handlePickFiles}
         accessibilityRole="button"
         accessibilityLabel="Browse files"
@@ -139,7 +141,7 @@ export default function FilesTab() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { paddingVertical: Spacing.sm, paddingBottom: 120 },
+  list: { paddingVertical: Spacing.sm },
   emptyContainer: { flex: 1 },
   row: {
     flexDirection: 'row',
@@ -161,8 +163,8 @@ const styles = StyleSheet.create({
   },
   iconBoxSelected: { backgroundColor: Colors.primary },
   info: { flex: 1 },
-  fileName: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '600' },
-  meta: { color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: 2 },
+  fileName: { color: Colors.textPrimary, fontSize: FontSize.md, fontFamily: FontFamily.semiBold },
+  meta: { color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: 2, fontFamily: FontFamily.regular },
   empty: {
     flex: 1,
     alignItems: 'center',
@@ -170,16 +172,16 @@ const styles = StyleSheet.create({
     padding: Spacing.xl,
     gap: Spacing.md,
   },
-  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.textSecondary },
+  emptyTitle: { fontSize: FontSize.xl, fontFamily: FontFamily.bold, color: Colors.textSecondary },
   emptySubtitle: {
     fontSize: FontSize.md,
     color: Colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
+    fontFamily: FontFamily.regular,
   },
   pickButton: {
     position: 'absolute',
-    bottom: 20,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
@@ -194,5 +196,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 6,
   },
-  pickButtonText: { color: 'white', fontWeight: '700', fontSize: FontSize.md },
+  pickButtonText: { color: 'white', fontFamily: FontFamily.bold, fontSize: FontSize.md },
 });

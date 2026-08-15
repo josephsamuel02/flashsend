@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelectionStore, SelectedFile } from '../../store/selectionStore';
 import SelectionHeader from '../../components/SelectionHeader';
 import PermissionGate from '../../components/PermissionGate';
@@ -31,6 +32,7 @@ function formatDuration(seconds: number): string {
 }
 
 export default function VideosTab() {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [endCursor, setEndCursor] = useState<string | undefined>(undefined);
@@ -126,7 +128,7 @@ export default function VideosTab() {
         keyExtractor={(item) => item.id}
         numColumns={COLUMNS}
         renderItem={renderItem}
-        contentContainerStyle={styles.grid}
+        contentContainerStyle={[styles.grid, { paddingBottom: Math.max(insets.bottom, 16) + 88 }]}
         onEndReached={() => hasMore && loadVideos(endCursor)}
         onEndReachedThreshold={0.5}
         windowSize={5}

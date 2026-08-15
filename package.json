@@ -9,6 +9,8 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/outfit": "^0.4.3",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "^2.1.0",
     "@react-navigation/material-top-tabs": "^7.0.0",
@@ -19,9 +21,11 @@
     "expo-dev-client": "~6.0.21",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.23",
+    "expo-font": "~14.0.12",
     "expo-media-library": "~18.2.1",
     "expo-network": "~8.0.8",
     "expo-sharing": "~14.0.8",
+    "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.19",
     "react": "19.1.0",
@@ -35,8 +39,10 @@
     "react-native-svg": "15.12.1",
     "react-native-tab-view": "^4.0.0",
     "react-native-tcp-socket": "^6.4.2",
+    "react-native-wifi-reborn": "^4.13.6",
     "react-native-worklets": "0.5.1",
     "sendapp-native": "./modules/sendapp-native",
+    "flash-send-hotspot": "./modules/flash-send-hotspot",
     "sp-react-native-in-app-updates": "^2.0.0",
     "zustand": "^5.0.0"
   },
@@ -46,15 +52,32 @@
     "typescript": "~5.9.2"
   },
   "private": true,
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-tcp-socket",
+          "sendapp-native",
+          "flash-send-hotspot"
+        ],
+        "listUnknownPackages": false
+      }
+    },
+    "install": {
+      "exclude": []
+    }
+  },
   "allowScripts": {
     "expo": true,
     "expo-camera": true,
     "expo-dev-client": true,
     "expo-document-picker": true,
     "expo-file-system": true,
+    "expo-font": true,
     "expo-media-library": true,
     "expo-network": true,
     "expo-sharing": true,
+    "expo-splash-screen": true,
     "expo-status-bar": true,
     "expo-updates": true,
     "react-native": true,
@@ -66,6 +89,10 @@
     "react-native-pager-view": true,
     "react-native-worklets": true,
     "@expo/vector-icons": true,
+    "@expo-google-fonts/inter": true,
+    "@expo-google-fonts/outfit": true,
+    "react-native-wifi-reborn": true,
+    "flash-send-hotspot": true,
     "sp-react-native-in-app-updates": true
   }
 }

@@ -1,24 +1,24 @@
 {
   "expo": {
-    "name": "SendApp",
+    "name": "Flash Send",
     "slug": "sendapp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/flash-send-icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/flash-send-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0a0a1a"
+      "backgroundColor": "#0A0A1A"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sendapp.app",
+      "bundleIdentifier": "com.flashsend.app",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "SendApp needs access to your photo library to share photos and videos.",
-        "NSCameraUsageDescription": "SendApp needs camera access to scan QR codes for device pairing.",
-        "NSLocalNetworkUsageDescription": "SendApp uses your local network to transfer files directly between devices on the same WiFi network.",
+        "NSPhotoLibraryUsageDescription": "Flash Send needs access to your photo library to share photos and videos.",
+        "NSCameraUsageDescription": "Flash Send needs camera access to scan QR codes for device pairing.",
+        "NSLocalNetworkUsageDescription": "Flash Send needs local network access to find and connect to nearby devices for file transfer.",
         "NSBonjourServices": [
           "_sendapp._tcp"
         ]
@@ -26,11 +26,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/flash-send-icon.png",
+        "backgroundImage": "./assets/flash-send-icon.png",
+        "monochromeImage": "./assets/flash-send-icon.png"
       },
-      "package": "com.sendapp.app",
+      "package": "com.flashsend.app",
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
@@ -48,7 +48,8 @@
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-        "android.permission.ACCESS_MEDIA_LOCATION"
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.QUERY_ALL_PACKAGES"
       ]
     },
     "web": {
@@ -59,11 +60,14 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow SendApp to access your photos.",
-          "savePhotosPermission": "Allow SendApp to save photos.",
+          "photosPermission": "Allow Flash Send to access your photos.",
+          "savePhotosPermission": "Allow Flash Send to save photos.",
           "isAccessMediaLocationEnabled": true
         }
-      ]
+      ],
+      "./plugins/withAppQueries",
+      "./plugins/withHotspotPermissions",
+      "react-native-wifi-reborn"
     ],
     "extra": {
       "eas": {
