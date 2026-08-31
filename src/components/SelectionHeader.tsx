@@ -2,7 +2,7 @@
 // Persistent header shown when in selection mode (Phase 4)
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSelectionStore } from '../store/selectionStore';
 import { Colors, Spacing, FontSize, BorderRadius } from '../theme/colors';
@@ -15,22 +15,35 @@ interface Props {
 
 export default function SelectionHeader({ onSelectAll, onClear, tabName }: Props) {
   const count = useSelectionStore((s) => Object.keys(s.selectedFiles).length);
+  const countByTab = useSelectionStore((s) => Object.values(s.selectedFiles).filter((f) => f.tab === tabName).length);
+  const totalSize = useSelectionStore((s) => Object.values(s.selectedFiles).reduce((acc, f) => acc + (f.size || 0), 0));
   const selectionMode = count > 0;
 
   if (!selectionMode) return null;
 
+  const formatSize = (b: number) => {
+    if (!b) return '';
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+    if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
   return (
     <View style={styles.container}>
-      <TouchableOpacity onPress={onClear} style={styles.clearButton}>
-        <MaterialIcons name="close" size={20} color={Colors.textSecondary} />
+      <TouchableOpacity onPress={onClear} style={styles.clearButton} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <MaterialIcons name="close" size={20} color={Colors.textPrimary} />
       </TouchableOpacity>
 
-      <Text style={styles.countText}>
-        {count} selected
-      </Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.countText}>
+          {count} selected • {countByTab} in {tabName}
+        </Text>
+        {totalSize > 0 && <Text style={styles.sizeText}>{formatSize(totalSize)}</Text>}
+      </View>
 
       <TouchableOpacity onPress={onSelectAll} style={styles.selectAllButton}>
-        <Text style={styles.selectAllText}>Select All</Text>
+        <MaterialIcons name="select-all" size={16} color={Colors.primary} />
+        <Text style={styles.selectAllText}>All</Text>
       </TouchableOpacity>
     </View>
   );
@@ -51,10 +64,14 @@ const styles = StyleSheet.create({
     padding: Spacing.xs,
   },
   countText: {
-    flex: 1,
     color: Colors.textPrimary,
     fontWeight: '700',
     fontSize: FontSize.md,
+  },
+  sizeText: {
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    marginTop: 1,
   },
   selectAllButton: {
     backgroundColor: Colors.primaryGlow,

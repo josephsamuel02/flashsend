@@ -1,148 +1,122 @@
 // src/screens/OnboardingScreen.tsx
-// One-time onboarding screen explaining permissions before OS prompts fire (Phase 8)
+// Xender-like first-launch experience, Android-only
 
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Spacing, FontSize, BorderRadius } from '../theme/colors';
+import { Colors, Spacing, FontSize, BorderRadius, FontFamily } from '../theme/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Permission requests
 const PERMISSIONS = [
   {
     icon: 'photo-library' as const,
-    title: 'Photo & Media Library',
-    description: 'Access photos, videos, and audio files you want to share.',
-    permissionType: 'media-library',
+    title: 'Photos, Videos & Music',
+    desc: 'Pick files you want to send. We never upload them — transfers stay on WiFi.',
   },
   {
     icon: 'camera-alt' as const,
     title: 'Camera',
-    description: 'Scan the QR code displayed on the sending device to pair.',
-    permissionType: 'camera',
+    desc: 'Scan the sender QR to connect instantly. No typing.',
   },
   {
-    icon: 'wifi' as const,
-    title: 'Local Network',
-    description: 'Transfer files directly between devices on the same WiFi — no internet required.',
-    permissionType: 'wifi',
+    icon: 'wifi-tethering' as const,
+    title: 'WiFi & Hotspot',
+    desc: 'Sender creates a hotspot automatically. Receiver joins with one tap. Needs Nearby Devices / Location on older Android.',
   },
-  ...(Platform.OS === 'android' ? [{
-    icon: 'notifications' as const,
-    title: 'Notifications',
-    description: 'Show transfer progress notifications while the app is in the background.',
-    permissionType: 'notifications',
-  }] : []),
+  {
+    icon: 'folder' as const,
+    title: 'Files & Storage',
+    desc: 'Browse any file type — APKs, PDFs, ZIPs. Saved files go to Flash Send folder & Gallery.',
+  },
 ];
 
-interface Props {
-  onComplete: () => void;
-}
+const STEPS = [
+  { n: '1', icon: 'checklist' as const, text: 'Select files from Apps, Photos, Videos, Audio or Files' },
+  { n: '2', icon: 'upload' as const, text: 'Tap Send → show QR to receiver' },
+  { n: '3', icon: 'qr-code-scanner' as const, text: 'Receiver taps Receive → scans QR (auto-joins hotspot)' },
+  { n: '4', icon: 'bolt' as const, text: 'Files fly over WiFi — 40–100 MB/s, no internet needed' },
+];
+
+interface Props { onComplete: () => void; }
 
 export default function OnboardingScreen({ onComplete }: Props) {
-  const [requestingPermissions, setRequestingPermissions] = useState(false);
+  const insets = useSafeAreaInsets();
+  const [busy, setBusy] = useState(false);
 
-  const handleRequestAllPermissions = async () => {
-    setRequestingPermissions(true);
-    
-    // Request all permissions
-    try {
-      // Note: In a real app, you would request each permission here
-      // For Expo, permissions are requested when each feature is first used
-      // This screen is just for user education and consent
-      setRequestingPermissions(false);
+  const handleGetStarted = async () => {
+    setBusy(true);
+    setTimeout(() => {
+      setBusy(false);
       onComplete();
-    } catch (error) {
-      console.error('Permission request error:', error);
-      setRequestingPermissions(false);
-    }
+    }, 300);
   };
+
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Hero */}
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + Spacing.lg }]} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <View style={styles.heroIcon}>
-            <MaterialIcons name="flash-on" size={64} color={Colors.primary} />
+          <Image source={require('../../assets/flash-send-icon.png')} style={styles.heroLogo} />
+          <Text style={styles.heroTitle}>Flash Send</Text>
+          <View style={styles.heroBadge}>
+            <MaterialIcons name="android" size={16} color={Colors.primary} />
+            <Text style={styles.heroBadgeText}>For Android • Like Xender & SHAREit</Text>
           </View>
-          <Text style={styles.heroTitle}>Welcome to Flash Send</Text>
           <Text style={styles.heroSubtitle}>
-            Share files instantly between devices on the same WiFi network.
-            No accounts. No cloud. No limits.
+            No account. No cloud. No cables. Share APKs, photos, videos, music and any file between Android phones in seconds.
           </Text>
+          <View style={styles.heroStats}>
+            <View style={styles.stat}><MaterialIcons name="bolt" size={16} color={Colors.primary} /><Text style={styles.statText}>Up to 40 MB/s</Text></View>
+            <View style={styles.stat}><MaterialIcons name="wifi-tethering" size={16} color={Colors.primary} /><Text style={styles.statText}>Hotspot auto</Text></View>
+            <View style={styles.stat}><MaterialIcons name="lock" size={16} color={Colors.primary} /><Text style={styles.statText}>Private</Text></View>
+          </View>
         </View>
 
-        {/* How it works */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>How it works</Text>
-          <View style={styles.stepList}>
-            {[
-              { n: '1', text: 'Select files from any tab' },
-              { n: '2', text: 'Tap Send → share the QR code' },
-              { n: '3', text: 'Other device taps Receive → scans it' },
-              { n: '4', text: 'Files transfer directly over WiFi' },
-            ].map((step) => (
-              <View key={step.n} style={styles.step}>
-                <View style={styles.stepNum}>
-                  <Text style={styles.stepNumText}>{step.n}</Text>
-                </View>
-                <Text style={styles.stepText}>{step.text}</Text>
+          <View style={styles.steps}>
+            {STEPS.map((s) => (
+              <View key={s.n} style={styles.step}>
+                <View style={styles.stepNum}><Text style={styles.stepNumText}>{s.n}</Text></View>
+                <View style={styles.stepIcon}><MaterialIcons name={s.icon} size={18} color={Colors.primary} /></View>
+                <Text style={styles.stepText}>{s.text}</Text>
               </View>
             ))}
           </View>
         </View>
 
-        {/* Permissions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Permissions we'll ask for</Text>
-          <Text style={styles.sectionSubtitle}>
-            These will only be requested when you first use each feature.
-          </Text>
-          {PERMISSIONS.map((perm) => (
-            <View key={perm.title} style={styles.permRow}>
-              <View style={styles.permIcon}>
-                <MaterialIcons name={perm.icon} size={22} color={Colors.primary} />
-              </View>
-              <View style={styles.permInfo}>
-                <Text style={styles.permTitle}>{perm.title}</Text>
-                <Text style={styles.permDesc}>{perm.description}</Text>
+          <Text style={styles.sectionTitle}>Permissions we'll ask</Text>
+          <Text style={styles.sectionSub}>Only when you first use each feature. You can deny and grant later in Settings.</Text>
+          {PERMISSIONS.map((p) => (
+            <View key={p.title} style={styles.permRow}>
+              <View style={styles.permIcon}><MaterialIcons name={p.icon} size={22} color={Colors.primary} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.permTitle}>{p.title}</Text>
+                <Text style={styles.permDesc}>{p.desc}</Text>
               </View>
             </View>
           ))}
         </View>
 
         <View style={styles.note}>
-          <MaterialIcons name="lock" size={16} color={Colors.textSecondary} />
+          <MaterialIcons name="shield" size={18} color={Colors.success} />
           <Text style={styles.noteText}>
-            All transfers are encrypted with a per-session token and happen entirely on your local network. Your files never leave your device via the internet.
+            Every transfer is protected by a one-time token. Files never touch the internet — only your two phones.
           </Text>
+        </View>
+
+        <View style={styles.androidNote}>
+          <MaterialIcons name="info-outline" size={16} color={Colors.textMuted} />
+          <Text style={styles.androidNoteText}>Android only — hotspot is automatic on Android 8+. On Android 12 and below, enable Location when prompted for hotspot.</Text>
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        {requestingPermissions ? (
-          <View style={styles.requestingContainer}>
-            <ActivityIndicator color="white" size="small" />
-            <Text style={styles.getStartedText}>Requesting Permissions...</Text>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.getStartedButton}
-            onPress={handleRequestAllPermissions}
-            accessibilityRole="button"
-            accessibilityLabel="Get started"
-          >
-            <Text style={styles.getStartedText}>Get Started</Text>
-            <MaterialIcons name="arrow-forward" size={22} color="white" />
-          </TouchableOpacity>
-        )}
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + Spacing.md }]}>
+        <TouchableOpacity style={styles.cta} onPress={handleGetStarted} activeOpacity={0.88} disabled={busy}>
+          <Text style={styles.ctaText}>{busy ? 'Starting…' : 'Get Started'}</Text>
+          <MaterialIcons name="arrow-forward" size={22} color="white" />
+        </TouchableOpacity>
+        <Text style={styles.footerSub}>By continuing, you agree to use hotspot/WiFi for local transfers.</Text>
       </View>
     </View>
   );
@@ -150,129 +124,113 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  scroll: { padding: Spacing.lg, paddingBottom: 120 },
-  hero: {
+  scroll: { paddingHorizontal: Spacing.lg, paddingBottom: 120 },
+  hero: { alignItems: 'center', gap: 12, paddingBottom: Spacing.lg },
+  heroLogo: { width: 96, height: 96, borderRadius: 20, backgroundColor: 'white', borderWidth: 1, borderColor: Colors.surfaceBorder },
+  heroTitle: { fontSize: 32, fontFamily: FontFamily.extraBold, color: Colors.textPrimary, letterSpacing: -0.5 },
+  heroBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: Spacing.xxl,
-    paddingBottom: Spacing.xl,
-    gap: Spacing.md,
-  },
-  heroIcon: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    gap: 6,
     backgroundColor: Colors.primaryGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.round,
+    borderWidth: 1,
     borderColor: Colors.primary,
-    marginBottom: Spacing.md,
-    elevation: 8,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
   },
-  heroTitle: {
-    fontSize: FontSize.heading,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-    textAlign: 'center',
+  heroBadgeText: { color: Colors.primary, fontWeight: '700', fontSize: 12 },
+  heroSubtitle: { fontSize: 15, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, maxWidth: 340, fontFamily: FontFamily.regular },
+  heroStats: { flexDirection: 'row', gap: Spacing.md, marginTop: 4 },
+  stat: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.round,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    alignItems: 'center',
   },
-  heroSubtitle: {
-    fontSize: FontSize.md,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
-    maxWidth: 320,
-  },
-  section: {
-    gap: Spacing.md,
-    marginBottom: Spacing.xl,
-  },
-  sectionTitle: {
-    fontSize: FontSize.xl,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  sectionSubtitle: {
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-    marginTop: -Spacing.sm,
-  },
-  stepList: { gap: Spacing.sm },
+  statText: { fontSize: 11, fontWeight: '700', color: Colors.textPrimary },
+  section: { gap: 12, marginBottom: Spacing.xl },
+  sectionTitle: { fontSize: 18, fontFamily: FontFamily.bold, color: Colors.textPrimary },
+  sectionSub: { fontSize: 13, color: Colors.textMuted, marginTop: -8, lineHeight: 18 },
+  steps: { gap: Spacing.sm },
   step: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: 12,
     backgroundColor: Colors.surface,
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    elevation: 1,
   },
-  stepNum: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepNumText: { color: 'white', fontWeight: '800', fontSize: FontSize.md },
-  stepText: { flex: 1, color: Colors.textPrimary, fontSize: FontSize.md },
+  stepNum: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
+  stepNumText: { color: 'white', fontWeight: '800', fontSize: 14 },
+  stepIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.primaryGlow, alignItems: 'center', justifyContent: 'center' },
+  stepText: { flex: 1, color: Colors.textPrimary, fontSize: 14, lineHeight: 20, fontFamily: FontFamily.medium },
   permRow: {
     flexDirection: 'row',
     gap: Spacing.md,
     backgroundColor: Colors.surface,
     padding: Spacing.md,
     borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'flex-start',
   },
   permIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.md,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: Colors.primaryGlow,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    borderWidth: 1,
+    borderColor: Colors.primary,
   },
-  permInfo: { flex: 1 },
-  permTitle: { color: Colors.textPrimary, fontWeight: '700', fontSize: FontSize.md },
-  permDesc: { color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: 3, lineHeight: 20 },
+  permTitle: { color: Colors.textPrimary, fontFamily: FontFamily.bold, fontSize: 15 },
+  permDesc: { color: Colors.textSecondary, fontSize: 13, marginTop: 2, lineHeight: 18 },
   note: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.success,
+    marginBottom: Spacing.md,
   },
-  noteText: { flex: 1, color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 20 },
+  noteText: { flex: 1, color: Colors.textPrimary, fontSize: 13, lineHeight: 18, fontFamily: FontFamily.medium },
+  androidNote: { flexDirection: 'row', gap: 8, backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md, padding: Spacing.md, borderWidth: 1, borderColor: Colors.surfaceBorder },
+  androidNoteText: { flex: 1, color: Colors.textMuted, fontSize: 12, lineHeight: 16 },
   footer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: Colors.background,
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
     borderTopWidth: 1,
     borderTopColor: Colors.surfaceBorder,
+    gap: 8,
   },
-  requestingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  getStartedButton: {
+  cta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
     backgroundColor: Colors.primary,
-    paddingVertical: Spacing.md + 2,
+    paddingVertical: 16,
     borderRadius: BorderRadius.round,
+    elevation: 4,
   },
-  getStartedText: { color: 'white', fontWeight: '800', fontSize: FontSize.lg },
+  ctaText: { color: 'white', fontFamily: FontFamily.bold, fontSize: 17 },
+  footerSub: { textAlign: 'center', color: Colors.textMuted, fontSize: 11 },
 });

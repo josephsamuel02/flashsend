@@ -12,6 +12,9 @@ interface SendappNativeModule {
   getAppApkPathForPackage?(packageName: string): string | null;
   getInstalledApps(): Promise<InstalledApp[]>;
   getAppIconBase64?(packageName: string): string | null;
+  copyApkToCache?(packageName: string): Promise<string>;
+  getFileSize?(uri: string): number;
+  getApkSize?(packageName: string): number;
 }
 
 let nativeModule: SendappNativeModule | null = null;
@@ -56,4 +59,24 @@ export function getAppIconBase64(packageName: string): string | null {
   } catch {
     return null;
   }
+}
+
+export async function copyApkToCache(packageName: string): Promise<string> {
+  if (!nativeModule || typeof (nativeModule as any).copyApkToCache !== 'function') {
+    // Fallback to direct path (may fail on strict devices)
+    const direct = getAppApkPathForPackage(packageName);
+    if (direct) return direct;
+    throw new Error('copyApkToCache not available - rebuild dev-client');
+  }
+  return (nativeModule as any).copyApkToCache(packageName);
+}
+
+export function getFileSize(uri: string): number {
+  if (!nativeModule || typeof (nativeModule as any).getFileSize !== 'function') return 0;
+  try { return (nativeModule as any).getFileSize(uri); } catch { return 0; }
+}
+
+export function getApkSize(packageName: string): number {
+  if (!nativeModule || typeof (nativeModule as any).getApkSize !== 'function') return 0;
+  try { return (nativeModule as any).getApkSize(packageName); } catch { return 0; }
 }

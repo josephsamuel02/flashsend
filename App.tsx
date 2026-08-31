@@ -19,9 +19,6 @@ import { Outfit_700Bold, Outfit_800ExtraBold } from '@expo-google-fonts/outfit';
 
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import MainNavigator from './src/navigation/MainNavigator';
-import HostScreen from './src/screens/HostScreen';
-import ScanScreen from './src/screens/ScanScreen';
-import TransferScreen from './src/screens/TransferScreen';
 import { Colors } from './src/theme/colors';
 import * as Updates from 'expo-updates';
 import SpInAppUpdates, { IAUUpdateKind } from 'sp-react-native-in-app-updates';
@@ -113,17 +110,6 @@ export default function App() {
         <NavigationContainer>
           <Stack.Navigator screenOptions={{ headerShown: false }}>
             <Stack.Screen name="Main" component={MainNavigator} />
-            <Stack.Screen
-              name="Host"
-              component={HostScreen}
-              options={{ presentation: 'modal' }}
-            />
-            <Stack.Screen
-              name="Scan"
-              component={ScanScreen}
-              options={{ presentation: 'modal' }}
-            />
-            <Stack.Screen name="Transfer" component={TransferScreen} />
           </Stack.Navigator>
         </NavigationContainer>
       </View>

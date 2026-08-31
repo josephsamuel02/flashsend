@@ -1,7 +1,7 @@
 // src/screens/TransferScreen.tsx
-// Active transfer UI — shows all file rows with progress (Phase 7)
+// Android transfer screen — Xender-like progress, keep-awake, retry
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,25 +9,28 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Alert,
   Platform,
+  AppState,
+  Alert,
+  Linking,
+  ScrollView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import * as FileSystem from 'expo-file-system';
-import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system/legacy';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { useTransferStore, TransferFile } from '../store/transferStore';
-import { downloadAllFiles, PeerConnection } from '../networking/client';
+import { downloadAllFiles, PeerConnection, retryFile } from '../networking/client';
 import { stopServer } from '../networking/server';
-import { Colors, Spacing, FontSize, BorderRadius } from '../theme/colors';
+import { Colors, Spacing, FontSize, BorderRadius, FontFamily } from '../theme/colors';
 import { stopHotspot } from 'flash-send-hotspot';
-import { AppState, Platform } from 'react-native';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function formatSpeed(bps: number): string {
@@ -36,24 +39,36 @@ function formatSpeed(bps: number): string {
   return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
 }
 
-function FileRow({ file }: { file: TransferFile }) {
-  const progress = file.size > 0 ? file.bytesTransferred / file.size : 0;
+function getFileIcon(mime: string, name: string): keyof typeof MaterialIcons.glyphMap {
+  const n = name.toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'videocam';
+  if (mime.startsWith('audio/')) return 'audiotrack';
+  if (n.endsWith('.apk')) return 'android';
+  if (n.endsWith('.pdf')) return 'picture-as-pdf';
+  if (mime.includes('zip')) return 'folder-zip';
+  return 'insert-drive-file';
+}
+
+function FileRow({ file, peer, destDir }: { file: TransferFile; peer: PeerConnection | null; destDir: string }) {
+  const progress = file.size > 0 ? Math.min(file.bytesTransferred / file.size, 1) : file.status === 'done' ? 1 : 0;
   const progressAnim = useRef(new Animated.Value(progress)).current;
-  const { cancelFile } = useTransferStore();
+  const { cancelFile, setFileStatus } = useTransferStore();
 
   useEffect(() => {
     Animated.timing(progressAnim, {
       toValue: progress,
-      duration: 200,
+      duration: 220,
       useNativeDriver: false,
     }).start();
-  }, [progress]);
+  }, [progress, progressAnim]);
 
   const statusColor =
     file.status === 'done' ? Colors.success
     : file.status === 'error' ? Colors.error
     : file.status === 'cancelled' ? Colors.textMuted
-    : Colors.primary;
+    : file.status === 'active' ? Colors.primary
+    : Colors.textMuted;
 
   const statusIcon =
     file.status === 'done' ? 'check-circle'
@@ -61,36 +76,68 @@ function FileRow({ file }: { file: TransferFile }) {
     : file.status === 'cancelled' ? 'cancel'
     : file.direction === 'outgoing' ? 'arrow-upward' : 'arrow-downward';
 
+  const handleRetry = async () => {
+    if (!peer) return;
+    setFileStatus(file.id, 'pending');
+    // Need manifest entry shape
+    await retryFile(peer, { id: file.id, name: file.name, size: file.size, mimeType: file.mimeType, checksum: file.checksum || '' }, destDir);
+  };
+
+  const handleOpen = async () => {
+    if (!file.localUri) return;
+    // For Android, try to open file or show in folder
+    try {
+      // If it's an APK, prompt install
+      if (file.name.toLowerCase().endsWith('.apk')) {
+        const contentUri = await FileSystem.getContentUriAsync(file.localUri as string);
+        // Use Linking to open installer (USER needs to allow install unknown apps)
+        Alert.alert('APK Ready', `${file.name} saved. Open to install?`, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Install', onPress: () => Linking.openURL(contentUri).catch(() => Alert.alert('Open manually', `File at ${file.localUri}`)) },
+        ]);
+      } else {
+        Alert.alert('File saved', `Saved to:\n${file.localUri}`, [
+          { text: 'OK' },
+          { text: 'Open File', onPress: () => Linking.openURL(file.localUri as string).catch(() => {}) },
+        ]);
+      }
+    } catch (e) {
+      Alert.alert('Saved', file.localUri || '');
+    }
+  };
+
   return (
     <View style={styles.fileRow}>
       <View style={styles.fileRowHeader}>
-        <MaterialIcons name={statusIcon} size={20} color={statusColor} />
-        <Text style={styles.fileRowName} numberOfLines={1}>{file.name}</Text>
-        <Text style={[styles.fileDirection,
-          { color: file.direction === 'outgoing' ? Colors.primary : Colors.success }
-        ]}>
-          {file.direction === 'outgoing' ? '↑ OUT' : '↓ IN'}
+        <View style={[styles.iconBox, { backgroundColor: statusColor + '18', borderColor: statusColor + '30' }]}>
+          <MaterialIcons name={statusIcon} size={18} color={statusColor} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.fileRowName} numberOfLines={1}>{file.name}</Text>
+          <Text style={styles.fileRowSub} numberOfLines={1}>
+            {file.direction === 'outgoing' ? 'Sending • ' : 'Receiving • '}{formatBytes(file.size)} • {file.mimeType.split('/').pop()}
+          </Text>
+        </View>
+        <Text style={[styles.fileDirection, { color: file.direction === 'outgoing' ? Colors.primary : Colors.success }]}>
+          {file.direction === 'outgoing' ? 'SEND' : 'RECV'}
         </Text>
         {(file.status === 'pending' || file.status === 'active') && (
           <TouchableOpacity
             onPress={() => cancelFile(file.id)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.cancelBtn}
           >
             <MaterialIcons name="close" size={18} color={Colors.textMuted} />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Progress bar */}
       <View style={styles.progressTrack}>
         <Animated.View
           style={[
             styles.progressFill,
             {
-              width: progressAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['0%', '100%'],
-              }),
+              width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
               backgroundColor: statusColor,
             },
           ]}
@@ -101,25 +148,33 @@ function FileRow({ file }: { file: TransferFile }) {
         <Text style={styles.metaText}>
           {formatBytes(file.bytesTransferred)} / {formatBytes(file.size)}
         </Text>
-        {file.status === 'active' && (
-          <Text style={styles.speedText}>{formatSpeed(file.speed)}</Text>
-        )}
-        {file.status === 'done' && (
-          <Text style={[styles.statusText, { color: Colors.success }]}>Complete ✓</Text>
-        )}
-        {file.status === 'error' && (
-          <Text style={[styles.statusText, { color: Colors.error }]} numberOfLines={1}>
-            {file.error || 'Failed'}
-          </Text>
-        )}
-        <Text style={styles.metaText}>{Math.round(progress * 100)}%</Text>
+        {file.status === 'active' && <Text style={styles.speedText}>{formatSpeed(file.speed)} • {Math.round(progress * 100)}%</Text>}
+        {file.status === 'pending' && <Text style={styles.statusText}>Waiting…</Text>}
+        {file.status === 'done' && <Text style={[styles.statusText, { color: Colors.success }]}>Done ✓</Text>}
+        {file.status === 'error' && <Text style={[styles.statusText, { color: Colors.error }]} numberOfLines={1}>{file.error?.slice(0, 60) || 'Failed'}</Text>}
+        {file.status === 'cancelled' && <Text style={styles.statusText}>Cancelled</Text>}
+        {!['active', 'pending'].includes(file.status) && <Text style={styles.metaText}>{Math.round(progress * 100)}%</Text>}
       </View>
+
+      {file.status === 'error' && peer && file.direction === 'incoming' && (
+        <TouchableOpacity onPress={handleRetry} style={styles.retryInline}>
+          <MaterialIcons name="refresh" size={16} color={Colors.primary} />
+          <Text style={styles.retryInlineText}>Retry</Text>
+        </TouchableOpacity>
+      )}
+
+      {file.status === 'done' && (
+        <TouchableOpacity onPress={handleOpen} style={styles.openInline}>
+          <MaterialIcons name="open-in-new" size={14} color={Colors.primary} />
+          <Text style={styles.openInlineText}>Open</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
 export default function TransferScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute() as any;
   const {
     files,
@@ -127,123 +182,189 @@ export default function TransferScreen() {
     bytesTransferred,
     sessionState,
     clearSession,
-    session,
+    archiveSession,
   } = useTransferStore();
 
   const peer: PeerConnection | null = route.params?.peer ?? null;
   const manifestFiles = route.params?.files ?? null;
+  const destDirRef = useRef<string>('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
+  // Keep screen awake during transfer
   useEffect(() => {
-    // If this is a receive session, start downloading
-    if (peer && manifestFiles) {
-      const destDir = FileSystem.documentDirectory + 'SendApp/received/';
-      FileSystem.makeDirectoryAsync(destDir, { intermediates: true })
-        .then(() => downloadAllFiles(peer, manifestFiles, destDir))
-        .catch(console.error);
-    }
-    // Phase 5: AppState listener — hotspot is tied to app lifecycle
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next.match(/inactive|background/)) {
-        console.log('[Transfer] App backgrounded with active transfer');
-      }
-    });
-    return () => {
-      sub.remove();
-      // Clean up hotspot on unmount if still active (Android sender case)
-      if (Platform.OS === 'android') {
-        try { stopHotspot(); } catch {}
-      }
-    };
+    activateKeepAwakeAsync().catch(() => {});
+    return () => { deactivateKeepAwake(); };
   }, []);
 
-  const allDone = files.every((f) => f.status === 'done' || f.status === 'cancelled' || f.status === 'error');
+  useEffect(() => {
+    let cancelled = false;
+    const startDownload = async () => {
+      if (peer && manifestFiles && !isDownloading) {
+        setIsDownloading(true);
+        const destDir = FileSystem.documentDirectory + 'SendApp/received/';
+        destDirRef.current = destDir;
+        try {
+          const info = await FileSystem.getInfoAsync(destDir);
+          if (!info.exists) await FileSystem.makeDirectoryAsync(destDir, { intermediates: true });
+          if (!cancelled) await downloadAllFiles(peer, manifestFiles, destDir);
+        } catch (e) {
+          console.error('[Transfer] downloadAllFiles error', e);
+        } finally {
+          if (!cancelled) setIsDownloading(false);
+        }
+      }
+    };
+    startDownload();
+
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next.match(/inactive|background/)) {
+        console.log('[Transfer] backgrounded');
+      }
+    });
+
+    return () => {
+      sub.remove();
+      cancelled = true;
+      if (Platform.OS === 'android') {
+        try { stopHotspot(); } catch {}
+        try {
+          const WifiManager = require('react-native-wifi-reborn').default;
+          (WifiManager as any).forceWifiUsageWithOptions?.(false, { noInternet: false });
+        } catch {}
+      }
+      deactivateKeepAwake();
+    };
+  }, [peer, manifestFiles]);
+
+  const allDone = files.length > 0 && files.every((f) => f.status === 'done' || f.status === 'cancelled' || f.status === 'error');
   const doneCount = files.filter((f) => f.status === 'done').length;
   const errorCount = files.filter((f) => f.status === 'error').length;
-  const overallProgress = totalBytes > 0 ? bytesTransferred / totalBytes : 0;
+  const outgoingCount = files.filter((f) => f.direction === 'outgoing').length;
+  const incomingCount = files.filter((f) => f.direction === 'incoming').length;
+  const overallProgress = totalBytes > 0 ? Math.min(bytesTransferred / totalBytes, 1) : files.length === 0 ? 0 : doneCount / Math.max(files.length, 1);
+  const isSender = !peer || outgoingCount > 0 && incomingCount === 0;
 
   const handleDone = () => {
     stopServer();
     if (Platform.OS === 'android') {
       try { stopHotspot(); } catch {}
-      // Release scoped WiFi bind if we forced it on receiver
       try {
         const WifiManager = require('react-native-wifi-reborn').default;
         (WifiManager as any).forceWifiUsageWithOptions?.(false, { noInternet: false });
       } catch {}
     }
-    clearSession();
-    (navigation as any).navigate('Main');
+    // Archive to history before clearing
+    if (doneCount > 0) archiveSession();
+    else clearSession();
+    navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+  };
+
+  const handleCancelAll = () => {
+    Alert.alert('Cancel all?', 'Stop all remaining transfers?', [
+      { text: 'Keep Going', style: 'cancel' },
+      {
+        text: 'Cancel All',
+        style: 'destructive',
+        onPress: () => {
+          files.forEach((f) => {
+            if (f.status === 'pending' || f.status === 'active') useTransferStore.getState().cancelFile(f.id);
+          });
+        },
+      },
+    ]);
   };
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Transfer Active</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBack}>
+          <MaterialIcons name="arrow-back" size={22} color={Colors.textPrimary} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>{isSender ? 'Sharing Files' : 'Receiving Files'}</Text>
+          <Text style={styles.headerSub}>
+            {files.length} files • {formatBytes(totalBytes)} • {isSender ? 'Hotspot active' : peer ? `${peer.ip}:${peer.port}` : 'Waiting'}
+          </Text>
+        </View>
         {sessionState !== 'idle' && (
-          <View style={styles.activeBadge}>
-            <View style={styles.activeDot} />
-            <Text style={styles.activeBadgeText}>Live</Text>
+          <View style={[styles.activeBadge, allDone && styles.activeBadgeDone]}>
+            <View style={[styles.activeDot, allDone && { backgroundColor: Colors.success }]} />
+            <Text style={[styles.activeBadgeText, allDone && { color: Colors.success }]}>{allDone ? 'Done' : 'Live'}</Text>
           </View>
         )}
       </View>
 
-      {/* Summary banner */}
       <View style={styles.summary}>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Overall Progress</Text>
+          <Text style={styles.summaryLabel}>{allDone ? 'Completed' : isDownloading ? 'Downloading…' : incomingCount > 0 ? 'Transferring…' : 'Hosting… ready for receiver'}</Text>
           <Text style={styles.summaryValue}>{Math.round(overallProgress * 100)}%</Text>
         </View>
         <View style={styles.progressTrackLarge}>
-          <View
-            style={[
-              styles.progressFillLarge,
-              { width: `${overallProgress * 100}%` },
-            ]}
-          />
+          <View style={[styles.progressFillLarge, { width: `${overallProgress * 100}%`, backgroundColor: errorCount > 0 && doneCount === 0 ? Colors.error : Colors.primary }]} />
         </View>
         <View style={styles.summaryStats}>
-          <Text style={styles.statText}>
-            {formatBytes(bytesTransferred)} / {formatBytes(totalBytes)}
-          </Text>
-          <Text style={styles.statText}>
-            {doneCount}/{files.length} files
-          </Text>
+          <Text style={styles.statText}>{formatBytes(bytesTransferred)} / {formatBytes(totalBytes)}</Text>
+          <Text style={styles.statText}>{doneCount}/{files.length} done{errorCount > 0 ? ` • ${errorCount} failed` : ''}</Text>
         </View>
+
+        {isSender && !peer && (
+          <View style={styles.senderHint}>
+            <MaterialIcons name="wifi-tethering" size={16} color={Colors.primary} />
+            <Text style={styles.senderHintText}>Keep this screen open. Receiver scans your QR to download.</Text>
+          </View>
+        )}
 
         {errorCount > 0 && (
           <View style={styles.errorBanner}>
-            <MaterialIcons name="error" size={16} color={Colors.error} />
-            <Text style={styles.errorBannerText}>{errorCount} file(s) failed</Text>
+            <MaterialIcons name="error-outline" size={16} color={Colors.error} />
+            <Text style={styles.errorBannerText}>{errorCount} file(s) failed — you can retry each one.</Text>
           </View>
         )}
       </View>
 
-      {/* File list */}
-      <FlatList
-        data={files}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <FileRow file={item} />}
-        contentContainerStyle={styles.list}
-      />
-
-      {/* Done button */}
-      {allDone && (
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.doneButton} onPress={handleDone}>
-            <MaterialIcons name="check" size={22} color={'white'} />
-            <Text style={styles.doneButtonText}>Done</Text>
+      {files.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <MaterialIcons name="inbox" size={56} color={Colors.surfaceBorder} />
+          <Text style={styles.emptyTitle}>No active transfer</Text>
+          <Text style={styles.emptySub}>Start from Send or Receive.</Text>
+          <TouchableOpacity onPress={handleDone} style={styles.doneButtonEmpty}>
+            <Text style={styles.doneButtonText}>Back to Home</Text>
           </TouchableOpacity>
         </View>
+      ) : (
+        <FlatList
+          data={files}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <FileRow file={item} peer={peer} destDir={destDirRef.current} />}
+          contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            files.length > 3 ? (
+              <View style={styles.listHeader}>
+                <Text style={styles.listHeaderText}>{incomingCount > 0 ? `${incomingCount} incoming • ${outgoingCount} outgoing` : `${files.length} files hosted`}</Text>
+                {!allDone && (
+                  <TouchableOpacity onPress={handleCancelAll}>
+                    <Text style={styles.listHeaderCancel}>Cancel All</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : null
+          }
+        />
       )}
 
-      {/* Background warning */}
-      {!allDone && (
-        <View style={styles.bgWarning}>
-          <MaterialIcons name="info-outline" size={14} color={Colors.textMuted} />
-          <Text style={styles.bgWarningText}>
-            Keep this screen open for best transfer performance
-          </Text>
+      {files.length > 0 && (
+        <View style={styles.footer}>
+          {allDone ? (
+            <TouchableOpacity style={styles.doneButton} onPress={handleDone} activeOpacity={0.85}>
+              <MaterialIcons name="check" size={22} color="white" />
+              <Text style={styles.doneButtonText}>Done — Back to Home</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.bgWarning}>
+              <MaterialIcons name="info-outline" size={16} color={Colors.primary} />
+              <Text style={styles.bgWarningText}>Keep phone awake and app in foreground for fastest speed. Transfers pause in background.</Text>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -255,99 +376,133 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Platform.OS === 'ios' ? 60 : Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Platform.OS === 'android' ? Spacing.lg + 8 : 60,
     paddingBottom: Spacing.md,
     backgroundColor: Colors.surface,
     gap: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceBorder,
+    elevation: 2,
   },
-  headerTitle: { flex: 1, fontSize: FontSize.xl, fontWeight: '700', color: Colors.textPrimary },
+  headerBack: { padding: 8, marginLeft: -4, borderRadius: 20, backgroundColor: Colors.surfaceElevated },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary, fontFamily: FontFamily.bold },
+  headerSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
   activeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: 'rgba(0, 212, 170, 0.15)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 3,
+    gap: 6,
+    backgroundColor: 'rgba(65, 105, 225, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: BorderRadius.round,
     borderWidth: 1,
-    borderColor: Colors.success,
+    borderColor: Colors.primary,
   },
-  activeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.success,
-  },
-  activeBadgeText: { color: Colors.success, fontSize: FontSize.xs, fontWeight: '700' },
+  activeBadgeDone: { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: Colors.success },
+  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary },
+  activeBadgeText: { color: Colors.primary, fontSize: 12, fontWeight: '700' },
   summary: {
-    backgroundColor: Colors.surfaceElevated,
-    padding: Spacing.lg,
+    backgroundColor: Colors.surface,
+    padding: Spacing.md,
     gap: Spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: Colors.surfaceBorder,
   },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  summaryLabel: { color: Colors.textSecondary, fontSize: FontSize.sm },
-  summaryValue: { color: Colors.textPrimary, fontWeight: '700', fontSize: FontSize.lg },
-  progressTrackLarge: {
-    height: 8,
-    backgroundColor: Colors.surfaceBorder,
-    borderRadius: BorderRadius.round,
-  },
-  progressFillLarge: {
-    height: '100%',
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.round,
-  },
+  summaryLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  summaryValue: { color: Colors.textPrimary, fontWeight: '800', fontSize: 18 },
+  progressTrackLarge: { height: 10, backgroundColor: Colors.surfaceBorder, borderRadius: BorderRadius.round, overflow: 'hidden' },
+  progressFillLarge: { height: '100%', borderRadius: BorderRadius.round },
   summaryStats: { flexDirection: 'row', justifyContent: 'space-between' },
-  statText: { color: Colors.textMuted, fontSize: FontSize.xs },
+  statText: { color: Colors.textMuted, fontSize: 12, fontFamily: FontFamily.medium },
+  senderHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.primaryGlow,
+    padding: 10,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  senderHintText: { flex: 1, color: Colors.primary, fontSize: 12, fontWeight: '600' },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: 'rgba(255,71,87,0.15)',
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.sm,
+    gap: 8,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    padding: 10,
+    borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.error,
   },
-  errorBannerText: { color: Colors.error, fontSize: FontSize.sm },
-  list: { padding: Spacing.md, paddingBottom: 120 },
+  errorBannerText: { color: Colors.error, fontSize: 13, fontWeight: '600' },
+  list: { padding: Spacing.md, paddingBottom: 120, gap: 8 },
+  listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  listHeaderText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
+  listHeaderCancel: { color: Colors.error, fontSize: 12, fontWeight: '700' },
   fileRow: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    marginBottom: Spacing.sm,
     gap: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    elevation: 1,
   },
   fileRowHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  fileRowName: { flex: 1, color: Colors.textPrimary, fontSize: FontSize.sm, fontWeight: '600' },
-  fileDirection: { fontSize: FontSize.xs, fontWeight: '700' },
-  progressTrack: {
-    height: 4,
-    backgroundColor: Colors.surfaceBorder,
+  iconBox: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  fileRowName: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600', flex: 1 },
+  fileRowSub: { color: Colors.textMuted, fontSize: 11, marginTop: 1 },
+  fileDirection: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  cancelBtn: { padding: 4, backgroundColor: Colors.surfaceElevated, borderRadius: 12 },
+  progressTrack: { height: 6, backgroundColor: Colors.surfaceBorder, borderRadius: BorderRadius.round, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: BorderRadius.round },
+  fileRowMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.sm },
+  metaText: { color: Colors.textMuted, fontSize: 11, fontFamily: FontFamily.medium },
+  speedText: { color: Colors.primary, fontSize: 11, fontWeight: '700' },
+  statusText: { fontSize: 11, fontWeight: '600' },
+  retryInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.primaryGlow,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: BorderRadius.round,
+    borderWidth: 1,
+    borderColor: Colors.primary,
   },
-  progressFill: {
-    height: '100%',
+  retryInlineText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },
+  openInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: BorderRadius.round,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
   },
-  fileRowMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  metaText: { color: Colors.textMuted, fontSize: FontSize.xs },
-  speedText: { color: Colors.primaryLight, fontSize: FontSize.xs, fontWeight: '600' },
-  statusText: { fontSize: FontSize.xs, fontWeight: '600' },
+  openInlineText: { color: Colors.primary, fontWeight: '600', fontSize: 13 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.md },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.textSecondary },
+  emptySub: { fontSize: 14, color: Colors.textMuted, textAlign: 'center' },
+  doneButtonEmpty: { backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: BorderRadius.round, marginTop: 8 },
   footer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: Spacing.lg,
-    backgroundColor: Colors.background,
+    padding: Spacing.md,
+    backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.surfaceBorder,
+    elevation: 8,
   },
   doneButton: {
     flexDirection: 'row',
@@ -355,22 +510,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.sm,
     backgroundColor: Colors.success,
-    paddingVertical: Spacing.md,
+    paddingVertical: 14,
     borderRadius: BorderRadius.round,
+    elevation: 2,
   },
-  doneButtonText: { color: 'white', fontWeight: '700', fontSize: FontSize.lg },
+  doneButtonText: { color: 'white', fontWeight: '800', fontSize: 16 },
   bgWarning: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.surfaceBorder,
+    backgroundColor: Colors.surfaceElevated,
+    padding: 12,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
   },
-  bgWarningText: { flex: 1, color: Colors.textMuted, fontSize: FontSize.xs },
+  bgWarningText: { flex: 1, color: Colors.textMuted, fontSize: 12, lineHeight: 16 },
 });

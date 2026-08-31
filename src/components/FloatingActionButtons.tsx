@@ -1,21 +1,13 @@
 // src/components/FloatingActionButtons.tsx
-// Two FABs: Send (bottom-right) and Receive (bottom-left)
-// Send button always visible and clickable without selection to generate QR code
-// Receive button shows QR scanner
+// Xender-like FABs: Send (with count) + Receive, Android-optimized
 
 import React, { useRef, useEffect } from 'react';
-import {
-  View,
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  Animated,
-} from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Animated } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelectionStore } from '../store/selectionStore';
 import { useTransferStore } from '../store/transferStore';
-import { Colors, Spacing, BorderRadius, FontSize } from '../theme/colors';
+import { Colors, Spacing, BorderRadius } from '../theme/colors';
 
 interface Props {
   onSendPress: () => void;
@@ -25,54 +17,53 @@ interface Props {
 export default function FloatingActionButtons({ onSendPress, onReceivePress }: Props) {
   const insets = useSafeAreaInsets();
   const selectedCount = useSelectionStore((s) => Object.keys(s.selectedFiles).length);
+  const totalSize = useSelectionStore((s) => Object.values(s.selectedFiles).reduce((sum, f) => sum + (f.size || 0), 0));
   const sessionState = useTransferStore((s) => s.sessionState);
-  const isTransferActive = sessionState === 'hosting' || sessionState === 'connected';
+  const isTransferActive = sessionState === 'hosting' || sessionState === 'connected' || sessionState === 'done';
+  const filesCount = useTransferStore((s) => s.files.length);
 
-  // Always animate send button (not dependent on selection anymore)
-  const sendScale = useRef(new Animated.Value(1)).current;
-  const sendOpacity = useRef(new Animated.Value(1)).current;
+  const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Reset animation values
-    sendScale.setValue(1);
-    sendOpacity.setValue(1);
-  }, []);
+    if (selectedCount > 0) {
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.08, duration: 140, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 140, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [selectedCount, pulse]);
+
+  const sendDisabled = false; // always enabled per spec, even with 0 files (QR still generated)
 
   return (
-    <View style={[styles.container, { bottom: Math.max(insets.bottom, 16) + 16 }]} pointerEvents="box-none">
-      {/* Receive FAB - bottom left */}
+    <View style={[styles.container, { bottom: Math.max(insets.bottom, 12) + 12 }]} pointerEvents="box-none">
+      {/* Receive — left */}
       <TouchableOpacity
         style={[styles.fab, styles.fabReceive]}
         onPress={onReceivePress}
-        activeOpacity={0.85}
-        accessibilityLabel="Receive files"
-        accessibilityRole="button"
+        activeOpacity={0.88}
       >
-        <MaterialIcons name="download" size={20} color="white" />
-        <Text style={styles.fabLabel}>Receive</Text>
+        <MaterialIcons name={isTransferActive && filesCount > 0 ? 'swap-vert' : 'download'} size={20} color="white" />
+        <Text style={styles.fabLabel}>{isTransferActive && filesCount > 0 ? 'Transfer' : 'Receive'}</Text>
       </TouchableOpacity>
 
-      {/* Send FAB - bottom right (always enabled) */}
-      <Animated.View style={[{ transform: [{ scale: sendScale }], opacity: sendOpacity }]}>
+      {/* Send — right, with animated badge */}
+      <Animated.View style={{ transform: [{ scale: pulse }] }}>
         <TouchableOpacity
-          style={[styles.fab, styles.fabSend]}
+          style={[styles.fab, styles.fabSend, sendDisabled && styles.fabDisabled]}
           onPress={onSendPress}
-          activeOpacity={0.85}
-          accessibilityLabel={
-            isTransferActive
-              ? 'View active transfer'
-              : 'Generate QR code for sending'
-          }
-          accessibilityRole="button"
+          activeOpacity={0.88}
+          disabled={sendDisabled}
         >
-          <MaterialIcons
-            name={isTransferActive ? 'sync' : 'upload'}
-            size={20}
-            color="white"
-          />
+          <MaterialIcons name={isTransferActive ? 'sync' : 'upload'} size={20} color="white" />
           <Text style={styles.fabLabel}>
-            {isTransferActive ? 'Transfer' : 'Send'}
+            {isTransferActive ? 'Sharing' : selectedCount > 0 ? `Send (${selectedCount})` : 'Send'}
           </Text>
+          {selectedCount > 0 && !isTransferActive && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countBadgeText}>{selectedCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </Animated.View>
     </View>
@@ -86,39 +77,41 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: Spacing.md,
     zIndex: 100,
   },
   fab: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     borderRadius: BorderRadius.round,
-    gap: 6,
-    elevation: 8,
+    gap: 8,
+    elevation: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.2)',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    minWidth: 120,
+    justifyContent: 'center',
   },
-  fabReceive: {
-    backgroundColor: Colors.fabReceive,
-    shadowColor: Colors.fabReceive,
+  fabReceive: { backgroundColor: Colors.primary, shadowColor: Colors.primary },
+  fabSend: { backgroundColor: '#0A0A1A', shadowColor: '#000', borderColor: 'rgba(255,255,255,0.14)' },
+  fabDisabled: { opacity: 0.6 },
+  fabLabel: { color: 'white', fontFamily: 'Outfit_700Bold', fontSize: 14, letterSpacing: 0.3 },
+  countBadge: {
+    backgroundColor: Colors.primary,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+    marginLeft: 2,
+    borderWidth: 2,
+    borderColor: 'white',
   },
-  fabSend: {
-    backgroundColor: Colors.fabSend,
-    shadowColor: Colors.fabSend,
-  },
-  fabLabel: {
-    color: 'white',
-    fontFamily: 'Outfit_700Bold',
-    fontSize: 13,
-    letterSpacing: 0.4,
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
+  countBadgeText: { color: 'white', fontWeight: '800', fontSize: 11 },
 });

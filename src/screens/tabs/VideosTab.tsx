@@ -1,7 +1,7 @@
 // src/screens/tabs/VideosTab.tsx
-// Grid view of videos with duration overlay and multi-select (Phase 4)
+// Android-optimized video grid, Xender-like
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   FlatList,
@@ -11,6 +11,7 @@ import {
   Dimensions,
   Text,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -22,10 +23,14 @@ import { Colors, Spacing, BorderRadius, FontSize } from '../../theme/colors';
 
 const { width } = Dimensions.get('window');
 const COLUMNS = 2;
-const CELL_SIZE = (width - Spacing.sm * 2) / COLUMNS - 2;
-const PAGE_SIZE = 30;
+const GAP = 4;
+const H_PAD = Spacing.sm;
+const CELL_W = (width - H_PAD * 2 - GAP) / COLUMNS;
+const CELL_H = CELL_W * 0.62;
+const PAGE_SIZE = 40;
 
 function formatDuration(seconds: number): string {
+  if (!seconds || isNaN(seconds)) return '0:00';
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
@@ -36,51 +41,67 @@ export default function VideosTab() {
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [endCursor, setEndCursor] = useState<string | undefined>(undefined);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasNextPage, setHasNextPage] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { toggleFile, isSelected, selectAll, clearSelection, selectedFiles } = useSelectionStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const loadingRef = useRef(false);
+  const hasNextRef = useRef(true);
 
-  const loadVideos = useCallback(async (cursor?: string) => {
-    if (loading || (!hasMore && cursor)) return;
-    setLoading(true);
+  const selectedFiles = useSelectionStore((s) => s.selectedFiles);
+  const toggleFile = useSelectionStore((s) => s.toggleFile);
+  const selectAll = useSelectionStore((s) => s.selectAll);
+  const clearSelection = useSelectionStore((s) => s.clearSelection);
+
+  const loadAssets = useCallback(async (cursor?: string, isRefresh = false) => {
+    if (loadingRef.current) return;
+    if (!isRefresh && !hasNextRef.current && cursor) return;
+    loadingRef.current = true;
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const result = await MediaLibrary.getAssetsAsync({
-        mediaType: MediaLibrary.MediaType.video,
+        mediaType: 'video',
         first: PAGE_SIZE,
         after: cursor,
-        sortBy: MediaLibrary.SortBy.creationTime,
+        sortBy: ['creationTime'],
       });
-      setAssets((prev) => cursor ? [...prev, ...result.assets] : result.assets);
+      if (isRefresh || !cursor) setAssets(result.assets);
+      else setAssets((prev) => [...prev, ...result.assets]);
       setEndCursor(result.endCursor);
-      setHasMore(result.hasNextPage);
+      setHasNextPage(result.hasNextPage);
+      hasNextRef.current = result.hasNextPage;
     } catch (err) {
-      console.error('[Videos] Failed to load:', err);
+      console.error('[Videos] load failed:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      loadingRef.current = false;
     }
-  }, [loading, hasMore]);
+  }, []);
 
   useEffect(() => {
     if (permission?.granted) {
-      loadVideos();
+      hasNextRef.current = true;
+      loadAssets(undefined, true);
     }
-  }, [permission?.granted]);
+  }, [permission?.granted, loadAssets]);
 
-  if (!permission) return <ActivityIndicator color={Colors.primary} style={{ flex: 1 }} />;
-
+  if (!permission) {
+    return <View style={styles.centered}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+  }
   if (!permission.granted) {
     return (
       <PermissionGate
         iconName="video-library"
-        title="Video Library Access"
-        description="SendApp needs access to your video library to let you share videos with nearby devices."
+        title="Allow Video Access"
+        description="Access videos to share them directly over WiFi with nearby Android devices."
         onRequest={requestPermission}
         denied={permission.canAskAgain === false}
       />
     );
   }
 
-  const toSelectedFile = (asset: MediaLibrary.Asset): SelectedFile => ({
+  const toSelected = (asset: MediaLibrary.Asset): SelectedFile => ({
     id: asset.id,
     name: asset.filename,
     uri: asset.uri,
@@ -90,32 +111,34 @@ export default function VideosTab() {
     thumbnail: asset.uri,
   });
 
-  const handleLongPress = (asset: MediaLibrary.Asset) => toggleFile(toSelectedFile(asset));
-  const handlePress = (asset: MediaLibrary.Asset) => {
-    if (Object.keys(selectedFiles).length > 0) handleLongPress(asset);
-  };
-  const handleSelectAll = () => selectAll(assets.map(toSelectedFile));
+  const handleToggle = (a: MediaLibrary.Asset) => toggleFile(toSelected(a));
+  const handleSelectAll = () => selectAll(assets.map(toSelected));
 
   const renderItem = ({ item }: { item: MediaLibrary.Asset }) => {
-    const selected = isSelected(item.id);
+    const selected = !!selectedFiles[item.id];
     return (
       <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => handlePress(item)}
-        onLongPress={() => handleLongPress(item)}
+        activeOpacity={0.85}
+        onPress={() => handleToggle(item)}
         style={[styles.cell, selected && styles.cellSelected]}
-        accessibilityLabel={`Video: ${item.filename}${selected ? ', selected' : ''}`}
-        accessibilityRole="imagebutton"
       >
         <Image source={{ uri: item.uri }} style={styles.thumbnail} />
+        <View style={styles.gradient} />
         <View style={styles.durationBadge}>
           <MaterialIcons name="play-arrow" size={12} color="white" />
           <Text style={styles.durationText}>{formatDuration(item.duration)}</Text>
         </View>
-        {selected && <View style={styles.checkOverlay}>
-          <MaterialIcons name="check-circle" size={32} color={Colors.primary} />
-        </View>}
+        <View style={styles.playIcon}>
+          <MaterialIcons name="play-circle-filled" size={36} color="rgba(255,255,255,0.92)" />
+        </View>
         {selected && <View style={styles.dimOverlay} />}
+        {selected && (
+          <View style={styles.checkOverlay}>
+            <View style={styles.checkCircle}>
+              <MaterialIcons name="check" size={16} color="white" />
+            </View>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -128,11 +151,28 @@ export default function VideosTab() {
         keyExtractor={(item) => item.id}
         numColumns={COLUMNS}
         renderItem={renderItem}
-        contentContainerStyle={[styles.grid, { paddingBottom: Math.max(insets.bottom, 16) + 88 }]}
-        onEndReached={() => hasMore && loadVideos(endCursor)}
-        onEndReachedThreshold={0.5}
-        windowSize={5}
-        ListFooterComponent={loading ? <ActivityIndicator color={Colors.primary} style={{ padding: 20 }} /> : null}
+        contentContainerStyle={[
+          styles.grid,
+          { paddingBottom: Math.max(insets.bottom, 16) + 96 },
+          assets.length === 0 && !loading ? styles.gridEmpty : undefined,
+        ]}
+        columnWrapperStyle={assets.length > 0 ? styles.columnWrapper : undefined}
+        onEndReached={() => hasNextPage && !loadingRef.current && loadAssets(endCursor)}
+        onEndReachedThreshold={0.4}
+        windowSize={7}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { hasNextRef.current = true; loadAssets(undefined, true); }} colors={[Colors.primary]} />}
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.empty}>
+              <MaterialIcons name="video-library" size={64} color={Colors.surfaceBorder} />
+              <Text style={styles.emptyTitle}>No videos found</Text>
+              <Text style={styles.emptySub}>Videos will appear here.</Text>
+            </View>
+          ) : null
+        }
+        ListFooterComponent={
+          loading && assets.length > 0 ? <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} /> : null
+        }
       />
     </View>
   );
@@ -140,39 +180,67 @@ export default function VideosTab() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  grid: { padding: Spacing.sm },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
+  grid: { paddingHorizontal: H_PAD, paddingTop: H_PAD },
+  gridEmpty: { flexGrow: 1 },
+  columnWrapper: { gap: GAP },
   cell: {
-    width: CELL_SIZE,
-    height: CELL_SIZE * 0.65,
-    margin: 1,
-    borderRadius: BorderRadius.sm,
+    width: CELL_W,
+    height: CELL_H,
+    marginBottom: GAP,
+    borderRadius: BorderRadius.md,
     overflow: 'hidden',
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceElevated,
   },
-  cellSelected: { borderWidth: 3, borderColor: Colors.primary },
+  cellSelected: { borderWidth: 2.5, borderColor: Colors.primary },
   thumbnail: { width: '100%', height: '100%' },
+  gradient: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
   durationBadge: {
     position: 'absolute',
     bottom: 6,
     right: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     borderRadius: BorderRadius.sm,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    gap: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    gap: 3,
   },
   durationText: { color: 'white', fontSize: FontSize.xs, fontWeight: '600' },
-  checkOverlay: {
+  playIcon: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    zIndex: 2,
+    top: '50%',
+    left: '50%',
+    marginLeft: -18,
+    marginTop: -18,
   },
   dimOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(108, 99, 255, 0.25)',
-    zIndex: 1,
+    backgroundColor: 'rgba(65, 105, 225, 0.28)',
   },
+  checkOverlay: { position: 'absolute', top: 6, right: 6 },
+  checkCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+    gap: Spacing.md,
+    marginTop: 60,
+  },
+  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.textSecondary },
+  emptySub: { fontSize: FontSize.md, color: Colors.textMuted, textAlign: 'center' },
 });

@@ -1,5 +1,5 @@
 // src/screens/tabs/PhotosTab.tsx
-// Grid view of media library photos with multi-select (Phase 4)
+// Android-optimized photo grid with Xender-like selection
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
@@ -11,6 +11,7 @@ import {
   Dimensions,
   Text,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -18,147 +19,169 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelectionStore, SelectedFile } from '../../store/selectionStore';
 import SelectionHeader from '../../components/SelectionHeader';
 import PermissionGate from '../../components/PermissionGate';
-import { Colors, Spacing, BorderRadius } from '../../theme/colors';
+import { Colors, Spacing, BorderRadius, FontSize } from '../../theme/colors';
 
 const { width } = Dimensions.get('window');
 const COLUMNS = 3;
-const CELL_SIZE = (width - Spacing.sm * 2) / COLUMNS - 2;
-const PAGE_SIZE = 60;
+const GAP = 2;
+const H_PAD = Spacing.sm;
+const CELL_SIZE = (width - H_PAD * 2 - GAP * (COLUMNS - 1)) / COLUMNS;
+const PAGE_SIZE = 80;
 
 export default function PhotosTab() {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [endCursor, setEndCursor] = useState<string | undefined>(undefined);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasNextPage, setHasNextPage] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { toggleFile, isSelected, selectAll, clearSelection, selectedFiles } = useSelectionStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const loadingRef = useRef(false);
+  const hasNextRef = useRef(true);
 
-  const loadPhotos = useCallback(async (cursor?: string) => {
-    if (loading || (!hasMore && cursor)) return;
-    setLoading(true);
+  const selectedFiles = useSelectionStore((s) => s.selectedFiles);
+  const toggleFile = useSelectionStore((s) => s.toggleFile);
+  const selectAll = useSelectionStore((s) => s.selectAll);
+  const clearSelection = useSelectionStore((s) => s.clearSelection);
+
+  const loadAssets = useCallback(async (cursor?: string, isRefresh = false) => {
+    if (loadingRef.current) return;
+    if (!isRefresh && !hasNextRef.current && cursor) return;
+    loadingRef.current = true;
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const result = await MediaLibrary.getAssetsAsync({
-        mediaType: MediaLibrary.MediaType.photo,
+        mediaType: 'photo',
         first: PAGE_SIZE,
         after: cursor,
-        sortBy: MediaLibrary.SortBy.creationTime,
+        sortBy: ['creationTime'],
       });
-      setAssets((prev) => cursor ? [...prev, ...result.assets] : result.assets);
+      if (isRefresh || !cursor) {
+        setAssets(result.assets);
+      } else {
+        setAssets((prev) => [...prev, ...result.assets]);
+      }
       setEndCursor(result.endCursor);
-      setHasMore(result.hasNextPage);
+      setHasNextPage(result.hasNextPage);
+      hasNextRef.current = result.hasNextPage;
     } catch (err) {
-      console.error('[Photos] Failed to load:', err);
+      console.error('[Photos] load failed:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      loadingRef.current = false;
     }
-  }, [loading, hasMore]);
+  }, []);
 
   useEffect(() => {
     if (permission?.granted) {
-      loadPhotos();
+      hasNextRef.current = true;
+      loadAssets(undefined, true);
     }
-  }, [permission?.granted]);
+  }, [permission?.granted, loadAssets]);
 
-  if (!permission) return <ActivityIndicator color={Colors.primary} style={{ flex: 1 }} />;
+  const handleRefresh = useCallback(() => {
+    hasNextRef.current = true;
+    loadAssets(undefined, true);
+  }, [loadAssets]);
+
+  if (!permission) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color={Colors.primary} size="large" />
+      </View>
+    );
+  }
 
   if (!permission.granted) {
     return (
       <PermissionGate
         iconName="photo-library"
-        title="Photo Library Access"
-        description="SendApp needs access to your photo library to let you choose photos and videos to share with nearby devices."
+        title="Allow Photo Access"
+        description="Flash Send needs access to photos to let you pick and share them instantly with nearby Android devices. No photos are uploaded to the cloud."
         onRequest={requestPermission}
         denied={permission.canAskAgain === false}
       />
     );
   }
 
-  const handleLongPress = (asset: MediaLibrary.Asset) => {
-    const file: SelectedFile = {
-      id: asset.id,
-      name: asset.filename,
-      uri: asset.uri,
-      size: 0, // MediaLibrary doesn't expose size directly; we get it at send time
-      mimeType: 'image/*',
-      tab: 'Photos',
-      thumbnail: asset.uri,
-    };
-    toggleFile(file);
-  };
+  const toSelected = (asset: MediaLibrary.Asset): SelectedFile => ({
+    id: asset.id,
+    name: asset.filename,
+    uri: asset.uri,
+    size: 0,
+    mimeType: 'image/*',
+    tab: 'Photos',
+    thumbnail: asset.uri,
+  });
 
-  const handlePress = (asset: MediaLibrary.Asset) => {
-    // Auto-select item on tap
-    const file: SelectedFile = {
-      id: asset.id,
-      name: asset.filename,
-      uri: asset.uri,
-      size: 0,
-      mimeType: 'image/*',
-      tab: 'Photos',
-      thumbnail: asset.uri,
-    };
-    toggleFile(file);
-  };
+  const handleToggle = (asset: MediaLibrary.Asset) => toggleFile(toSelected(asset));
 
   const handleSelectAll = () => {
-    selectAll(
-      assets.map((a) => ({
-        id: a.id,
-        name: a.filename,
-        uri: a.uri,
-        size: 0,
-        mimeType: 'image/*',
-        tab: 'Photos' as const,
-        thumbnail: a.uri,
-      }))
-    );
+    selectAll(assets.map(toSelected));
   };
 
   const renderItem = ({ item }: { item: MediaLibrary.Asset }) => {
-    const selected = isSelected(item.id);
+    const selected = !!selectedFiles[item.id];
     return (
       <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => handlePress(item)}
-        onLongPress={() => handleLongPress(item)}
+        activeOpacity={0.85}
+        onPress={() => handleToggle(item)}
         style={[styles.cell, selected && styles.cellSelected]}
-        accessibilityLabel={`Photo: ${item.filename}${selected ? ', selected' : ''}`}
-        accessibilityRole="imagebutton"
       >
         <Image source={{ uri: item.uri }} style={styles.thumbnail} />
+        {selected && <View style={styles.dimOverlay} />}
         {selected && (
           <View style={styles.checkOverlay}>
-            <MaterialIcons name="check-circle" size={28} color={Colors.primary} />
+            <View style={styles.checkCircle}>
+              <MaterialIcons name="check" size={18} color="white" />
+            </View>
           </View>
         )}
-        {selected && <View style={styles.dimOverlay} />}
       </TouchableOpacity>
     );
   };
 
   return (
     <View style={styles.container}>
-      <SelectionHeader
-        tabName="Photos"
-        onSelectAll={handleSelectAll}
-        onClear={clearSelection}
-      />
+      <SelectionHeader tabName="Photos" onSelectAll={handleSelectAll} onClear={clearSelection} />
       <FlatList
         data={assets}
         keyExtractor={(item) => item.id}
         numColumns={COLUMNS}
         renderItem={renderItem}
-        contentContainerStyle={[styles.grid, { paddingBottom: Math.max(insets.bottom, 16) + 88 }]}
-        onEndReached={() => hasMore && loadPhotos(endCursor)}
-        onEndReachedThreshold={0.5}
-        windowSize={5}
-        getItemLayout={(_, index) => ({
-          length: CELL_SIZE + 2,
-          offset: (CELL_SIZE + 2) * Math.floor(index / COLUMNS),
-          index,
-        })}
-        ListFooterComponent={loading ? <ActivityIndicator color={Colors.primary} style={{ padding: 20 }} /> : null}
+        contentContainerStyle={[
+          styles.grid,
+          { paddingBottom: Math.max(insets.bottom, 16) + 96 },
+          assets.length === 0 && !loading ? styles.gridEmpty : undefined,
+        ]}
+        columnWrapperStyle={assets.length > 0 ? styles.columnWrapper : undefined}
+        onEndReached={() => {
+          if (hasNextPage && !loadingRef.current) loadAssets(endCursor);
+        }}
+        onEndReachedThreshold={0.4}
+        windowSize={7}
+        initialNumToRender={30}
+        maxToRenderPerBatch={30}
+        removeClippedSubviews
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.empty}>
+              <MaterialIcons name="photo-library" size={64} color={Colors.surfaceBorder} />
+              <Text style={styles.emptyTitle}>No photos found</Text>
+              <Text style={styles.emptySub}>Photos you take will appear here. Pull to refresh.</Text>
+            </View>
+          ) : null
+        }
+        ListFooterComponent={
+          loading && assets.length > 0 ? (
+            <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} />
+          ) : !hasNextPage && assets.length > 0 ? (
+            <Text style={styles.footerEnd}>{assets.length} photos</Text>
+          ) : null
+        }
       />
     </View>
   );
@@ -166,32 +189,53 @@ export default function PhotosTab() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  grid: { padding: Spacing.sm },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
+  grid: { paddingHorizontal: H_PAD, paddingTop: H_PAD },
+  gridEmpty: { flexGrow: 1 },
+  columnWrapper: { gap: GAP },
   cell: {
     width: CELL_SIZE,
     height: CELL_SIZE,
-    margin: 1,
+    marginBottom: GAP,
     borderRadius: BorderRadius.sm,
     overflow: 'hidden',
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceElevated,
   },
   cellSelected: {
-    borderWidth: 3,
+    borderWidth: 2.5,
     borderColor: Colors.primary,
   },
-  thumbnail: {
-    width: '100%',
-    height: '100%',
+  thumbnail: { width: '100%', height: '100%' },
+  dimOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(65, 105, 225, 0.28)',
   },
   checkOverlay: {
     position: 'absolute',
-    top: 4,
-    right: 4,
+    top: 6,
+    right: 6,
     zIndex: 2,
   },
-  dimOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(108, 99, 255, 0.25)',
-    zIndex: 1,
+  checkCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+    elevation: 3,
   },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+    gap: Spacing.md,
+    marginTop: 60,
+  },
+  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.textSecondary },
+  emptySub: { fontSize: FontSize.md, color: Colors.textMuted, textAlign: 'center', lineHeight: 22 },
+  footerEnd: { textAlign: 'center', color: Colors.textMuted, fontSize: FontSize.xs, padding: 12 },
 });

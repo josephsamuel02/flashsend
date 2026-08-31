@@ -1,5 +1,5 @@
 // src/store/selectionStore.ts
-// Zustand store for managing multi-tab file selection state
+// Zustand store for managing multi-tab file selection (Xender-like)
 
 import { create } from 'zustand';
 
@@ -21,10 +21,16 @@ interface SelectionStore {
 
   toggleFile: (file: SelectedFile) => void;
   selectAll: (files: SelectedFile[]) => void;
+  deselectAll: (files: SelectedFile[]) => void;
   clearSelection: () => void;
+  clearTab: (tab: TabName) => void;
   getCount: () => number;
+  getCountByTab: (tab: TabName) => number;
   getFiles: () => SelectedFile[];
+  getFilesByTab: (tab: TabName) => SelectedFile[];
+  getTotalSize: () => number;
   isSelected: (id: string) => boolean;
+  hasSelection: () => boolean;
 }
 
 export const useSelectionStore = create<SelectionStore>((set, get) => ({
@@ -39,26 +45,62 @@ export const useSelectionStore = create<SelectionStore>((set, get) => ({
       } else {
         next[file.id] = file;
       }
+      const hasAny = Object.keys(next).length > 0;
       return {
         selectedFiles: next,
-        selectionMode: Object.keys(next).length > 0,
+        selectionMode: hasAny,
       };
     }),
 
   selectAll: (files) =>
     set((state) => {
       const next = { ...state.selectedFiles };
+      let added = 0;
       files.forEach((f) => {
-        next[f.id] = f;
+        if (!next[f.id]) {
+          next[f.id] = f;
+          added++;
+        }
       });
-      return { selectedFiles: next, selectionMode: true };
+      // If already all selected, do nothing special; keep selectionMode true if any exists
+      return { selectedFiles: next, selectionMode: Object.keys(next).length > 0 };
+    }),
+
+  deselectAll: (files) =>
+    set((state) => {
+      const next = { ...state.selectedFiles };
+      files.forEach((f) => delete next[f.id]);
+      return {
+        selectedFiles: next,
+        selectionMode: Object.keys(next).length > 0,
+      };
     }),
 
   clearSelection: () => set({ selectedFiles: {}, selectionMode: false }),
 
+  clearTab: (tab) =>
+    set((state) => {
+      const next: Record<string, SelectedFile> = {};
+      Object.entries(state.selectedFiles).forEach(([id, f]) => {
+        if (f.tab !== tab) next[id] = f;
+      });
+      return {
+        selectedFiles: next,
+        selectionMode: Object.keys(next).length > 0,
+      };
+    }),
+
   getCount: () => Object.keys(get().selectedFiles).length,
+
+  getCountByTab: (tab) => Object.values(get().selectedFiles).filter(f => f.tab === tab).length,
 
   getFiles: () => Object.values(get().selectedFiles),
 
+  getFilesByTab: (tab) => Object.values(get().selectedFiles).filter(f => f.tab === tab),
+
+  getTotalSize: () => Object.values(get().selectedFiles).reduce((sum, f) => sum + (f.size || 0), 0),
+
   isSelected: (id) => !!get().selectedFiles[id],
+
+  hasSelection: () => Object.keys(get().selectedFiles).length > 0,
 }));

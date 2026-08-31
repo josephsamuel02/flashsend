@@ -47,6 +47,13 @@ module.exports = (config) => {
       // Ensure we don't have usesPermissionFlags on this one
     }
 
+    // usesCleartextTraffic for local HTTP (android:usesCleartextTraffic="true" on <application>)
+    // Expo schema doesn't support this directly, so inject via config plugin
+    const application = appManifest.application?.[0];
+    if (application && application.$) {
+      application.$['android:usesCleartextTraffic'] = 'true';
+    }
+
     return config;
   });
 };

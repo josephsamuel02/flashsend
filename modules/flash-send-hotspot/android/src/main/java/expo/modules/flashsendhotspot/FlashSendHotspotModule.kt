@@ -55,19 +55,21 @@ class FlashSendHotspotModule : Module() {
             reservation = res
             isStarting = false
             try {
-              val config = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                res.softApConfiguration
+              val ssid: String?
+              val password: String?
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val softAp = res.softApConfiguration
+                // SoftApConfiguration fields are plain strings (no quotes)
+                ssid = softAp?.ssid
+                // passphrase can be null on some devices if open network (shouldn't happen for LOHS)
+                password = softAp?.passphrase
               } else {
                 @Suppress("DEPRECATION")
-                res.wifiConfiguration
-              }
-              val ssid = config?.SSID
-              // passphrase can be null on some devices if open network (shouldn't happen for LOHS)
-              val password = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                config?.passphrase
-              } else {
+                val wifiConf = res.wifiConfiguration
+                // WifiConfiguration fields are wrapped in literal double-quotes ("MyNetwork") — strip them for QR payload
+                ssid = wifiConf?.SSID?.removeSurrounding("\"")
                 @Suppress("DEPRECATION")
-                config?.preSharedKey
+                password = wifiConf?.preSharedKey?.removeSurrounding("\"")
               }
               if (ssid.isNullOrEmpty()) {
                 promise.reject("NO_SSID", "Hotspot started but SSID is empty", null)

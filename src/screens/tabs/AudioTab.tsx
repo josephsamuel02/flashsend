@@ -1,7 +1,7 @@
 // src/screens/tabs/AudioTab.tsx
-// List view of audio tracks with multi-select (Phase 4)
+// Android-optimized audio list, Xender-like
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   FlatList,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -18,9 +19,10 @@ import SelectionHeader from '../../components/SelectionHeader';
 import PermissionGate from '../../components/PermissionGate';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../theme/colors';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 60;
 
 function formatDuration(seconds: number): string {
+  if (!seconds || isNaN(seconds)) return '--:--';
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
@@ -31,87 +33,104 @@ export default function AudioTab() {
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [endCursor, setEndCursor] = useState<string | undefined>(undefined);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasNextPage, setHasNextPage] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { toggleFile, isSelected, selectAll, clearSelection, selectedFiles } = useSelectionStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const loadingRef = useRef(false);
+  const hasNextRef = useRef(true);
 
-  const loadAudio = useCallback(async (cursor?: string) => {
-    if (loading || (!hasMore && cursor)) return;
-    setLoading(true);
+  const selectedFiles = useSelectionStore((s) => s.selectedFiles);
+  const toggleFile = useSelectionStore((s) => s.toggleFile);
+  const selectAll = useSelectionStore((s) => s.selectAll);
+  const clearSelection = useSelectionStore((s) => s.clearSelection);
+
+  const loadAssets = useCallback(async (cursor?: string, isRefresh = false) => {
+    if (loadingRef.current) return;
+    if (!isRefresh && !hasNextRef.current && cursor) return;
+    loadingRef.current = true;
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const result = await MediaLibrary.getAssetsAsync({
-        mediaType: MediaLibrary.MediaType.audio,
+        mediaType: 'audio',
         first: PAGE_SIZE,
         after: cursor,
-        sortBy: MediaLibrary.SortBy.creationTime,
+        sortBy: ['creationTime'],
       });
-      setAssets((prev) => cursor ? [...prev, ...result.assets] : result.assets);
+      if (isRefresh || !cursor) setAssets(result.assets);
+      else setAssets((prev) => [...prev, ...result.assets]);
       setEndCursor(result.endCursor);
-      setHasMore(result.hasNextPage);
+      setHasNextPage(result.hasNextPage);
+      hasNextRef.current = result.hasNextPage;
     } catch (err) {
-      console.error('[Audio] Failed to load:', err);
+      console.error('[Audio] load failed:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      loadingRef.current = false;
     }
-  }, [loading, hasMore]);
+  }, []);
 
   useEffect(() => {
     if (permission?.granted) {
-      loadAudio();
+      hasNextRef.current = true;
+      loadAssets(undefined, true);
     }
-  }, [permission?.granted]);
+  }, [permission?.granted, loadAssets]);
 
-  if (!permission) return <ActivityIndicator color={Colors.primary} style={{ flex: 1 }} />;
-
+  if (!permission) return <View style={styles.centered}><ActivityIndicator color={Colors.primary} size="large" /></View>;
   if (!permission.granted) {
     return (
       <PermissionGate
         iconName="library-music"
-        title="Audio Library Access"
-        description="SendApp needs access to your music library to let you share audio files with nearby devices."
+        title="Allow Music Access"
+        description="Access audio files to share music instantly with nearby Android devices."
         onRequest={requestPermission}
         denied={permission.canAskAgain === false}
       />
     );
   }
 
-  const toSelectedFile = (asset: MediaLibrary.Asset): SelectedFile => ({
-    id: asset.id,
-    name: asset.filename,
-    uri: asset.uri,
+  const toSelected = (a: MediaLibrary.Asset): SelectedFile => ({
+    id: a.id,
+    name: a.filename,
+    uri: a.uri,
     size: 0,
     mimeType: 'audio/*',
     tab: 'Audio',
   });
 
-  const handleLongPress = (asset: MediaLibrary.Asset) => toggleFile(toSelectedFile(asset));
-  const handlePress = (asset: MediaLibrary.Asset) => {
-    if (Object.keys(selectedFiles).length > 0) handleLongPress(asset);
-  };
-  const handleSelectAll = () => selectAll(assets.map(toSelectedFile));
+  const handleToggle = (a: MediaLibrary.Asset) => toggleFile(toSelected(a));
+  const handleSelectAll = () => selectAll(assets.map(toSelected));
 
   const renderItem = ({ item }: { item: MediaLibrary.Asset }) => {
-    const selected = isSelected(item.id);
+    const selected = !!selectedFiles[item.id];
     return (
       <TouchableOpacity
-        onPress={() => handlePress(item)}
-        onLongPress={() => handleLongPress(item)}
+        onPress={() => handleToggle(item)}
         style={[styles.row, selected && styles.rowSelected]}
-        activeOpacity={0.8}
-        accessibilityLabel={`Audio: ${item.filename}${selected ? ', selected' : ''}`}
-        accessibilityRole="button"
+        activeOpacity={0.85}
       >
         <View style={[styles.iconBox, selected && styles.iconBoxSelected]}>
-          {selected
-            ? <MaterialIcons name="check" size={22} color="white" />
-            : <MaterialIcons name="audiotrack" size={22} color={Colors.primary} />
-          }
+          {selected ? (
+            <MaterialIcons name="check" size={22} color="white" />
+          ) : (
+            <MaterialIcons name="audiotrack" size={22} color={Colors.primary} />
+          )}
         </View>
         <View style={styles.info}>
-          <Text style={styles.fileName} numberOfLines={1}>{item.filename.replace(/\.[^.]+$/, '')}</Text>
-          <Text style={styles.meta}>{formatDuration(item.duration)} • Audio</Text>
+          <Text style={styles.fileName} numberOfLines={1}>
+            {item.filename.replace(/\.[^.]+$/, '')}
+          </Text>
+          <Text style={styles.meta} numberOfLines={1}>
+            {formatDuration(item.duration)} • {item.filename.split('.').pop()?.toUpperCase()}
+          </Text>
         </View>
-        {selected && <MaterialIcons name="check-circle" size={22} color={Colors.primary} />}
+        {selected ? (
+          <MaterialIcons name="check-circle" size={22} color={Colors.primary} />
+        ) : (
+          <MaterialIcons name="chevron-right" size={20} color={Colors.textMuted} />
+        )}
       </TouchableOpacity>
     );
   };
@@ -123,11 +142,27 @@ export default function AudioTab() {
         data={assets}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 16) + 88 }]}
-        onEndReached={() => hasMore && loadAudio(endCursor)}
-        onEndReachedThreshold={0.5}
+        contentContainerStyle={[
+          styles.list,
+          { paddingBottom: Math.max(insets.bottom, 16) + 96 },
+          assets.length === 0 && !loading ? { flexGrow: 1 } : undefined,
+        ]}
+        onEndReached={() => hasNextPage && !loadingRef.current && loadAssets(endCursor)}
+        onEndReachedThreshold={0.4}
         windowSize={10}
-        ListFooterComponent={loading ? <ActivityIndicator color={Colors.primary} style={{ padding: 20 }} /> : null}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { hasNextRef.current = true; loadAssets(undefined, true); }} colors={[Colors.primary]} />}
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.empty}>
+              <MaterialIcons name="library-music" size={64} color={Colors.surfaceBorder} />
+              <Text style={styles.emptyTitle}>No audio found</Text>
+              <Text style={styles.emptySub}>Music and recordings will appear here.</Text>
+            </View>
+          ) : null
+        }
+        ListFooterComponent={
+          loading && assets.length > 0 ? <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} /> : null
+        }
       />
     </View>
   );
@@ -135,7 +170,8 @@ export default function AudioTab() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { paddingVertical: Spacing.sm },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
+  list: { paddingVertical: Spacing.xs },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -144,30 +180,31 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.surfaceBorder,
+    backgroundColor: Colors.background,
   },
-  rowSelected: {
-    backgroundColor: Colors.primaryGlow,
-  },
+  rowSelected: { backgroundColor: Colors.primaryGlow },
   iconBox: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     borderRadius: BorderRadius.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
   },
-  iconBoxSelected: {
-    backgroundColor: Colors.primary,
-  },
+  iconBoxSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   info: { flex: 1 },
-  fileName: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    fontWeight: '600',
+  fileName: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '600' },
+  meta: { color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: 2 },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+    gap: Spacing.md,
+    marginTop: 40,
   },
-  meta: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    marginTop: 2,
-  },
+  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.textSecondary },
+  emptySub: { fontSize: FontSize.md, color: Colors.textMuted, textAlign: 'center' },
 });
