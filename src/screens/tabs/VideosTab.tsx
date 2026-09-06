@@ -16,17 +16,20 @@ import {
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSelectionStore, SelectedFile } from '../../store/selectionStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import SelectionHeader from '../../components/SelectionHeader';
 import PermissionGate from '../../components/PermissionGate';
-import { Colors, Spacing, BorderRadius, FontSize } from '../../theme/colors';
+import { useColors, type ThemeColors, Spacing, BorderRadius, FontSize } from '../../theme/colors';
+import type { ViewerAsset } from '../MediaViewerScreen';
 
 const { width } = Dimensions.get('window');
 const COLUMNS = 2;
-const GAP = 4;
-const H_PAD = Spacing.sm;
+const GAP = 6;
+const H_PAD = 6;
 const CELL_W = (width - H_PAD * 2 - GAP) / COLUMNS;
-const CELL_H = CELL_W * 0.62;
+const CELL_H = CELL_W * 0.75;
 const PAGE_SIZE = 40;
 
 function formatDuration(seconds: number): string {
@@ -37,7 +40,10 @@ function formatDuration(seconds: number): string {
 }
 
 export default function VideosTab() {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [endCursor, setEndCursor] = useState<string | undefined>(undefined);
@@ -86,8 +92,18 @@ export default function VideosTab() {
     }
   }, [permission?.granted, loadAssets]);
 
+  // Auto-refresh each time the tab gains focus (pull-to-refresh remains for manual)
+  useFocusEffect(
+    useCallback(() => {
+      if (permission?.granted && useSettingsStore.getState().autoRefresh) {
+        hasNextRef.current = true;
+        loadAssets(undefined, true);
+      }
+    }, [permission?.granted, loadAssets])
+  );
+
   if (!permission) {
-    return <View style={styles.centered}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+    return <View style={styles.centered}><ActivityIndicator color={C.primary} size="large" /></View>;
   }
   if (!permission.granted) {
     return (
@@ -114,12 +130,33 @@ export default function VideosTab() {
   const handleToggle = (a: MediaLibrary.Asset) => toggleFile(toSelected(a));
   const handleSelectAll = () => selectAll(assets.map(toSelected));
 
+  const openViewer = useCallback(
+    (asset: MediaLibrary.Asset) => {
+      const viewerAssets: ViewerAsset[] = assets.map((a) => ({
+        id: a.id,
+        uri: a.uri,
+        name: a.filename,
+        size: 0,
+        mimeType: 'video/*',
+        duration: a.duration,
+      }));
+      const initialIndex = Math.max(
+        0,
+        assets.findIndex((a) => a.id === asset.id)
+      );
+      navigation.navigate('MediaViewer', { assets: viewerAssets, initialIndex });
+    },
+    [assets, navigation]
+  );
+
   const renderItem = ({ item }: { item: MediaLibrary.Asset }) => {
     const selected = !!selectedFiles[item.id];
     return (
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={() => handleToggle(item)}
+        onPress={() => openViewer(item)}
+        onLongPress={() => handleToggle(item)}
+        delayLongPress={350}
         style={[styles.cell, selected && styles.cellSelected]}
       >
         <Image source={{ uri: item.uri }} style={styles.thumbnail} />
@@ -160,27 +197,27 @@ export default function VideosTab() {
         onEndReached={() => hasNextPage && !loadingRef.current && loadAssets(endCursor)}
         onEndReachedThreshold={0.4}
         windowSize={7}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { hasNextRef.current = true; loadAssets(undefined, true); }} colors={[Colors.primary]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { hasNextRef.current = true; loadAssets(undefined, true); }} colors={[C.primary]} />}
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
-              <MaterialIcons name="video-library" size={64} color={Colors.surfaceBorder} />
+              <MaterialIcons name="video-library" size={64} color={C.surfaceBorder} />
               <Text style={styles.emptyTitle}>No videos found</Text>
               <Text style={styles.emptySub}>Videos will appear here.</Text>
             </View>
           ) : null
         }
         ListFooterComponent={
-          loading && assets.length > 0 ? <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} /> : null
+          loading && assets.length > 0 ? <ActivityIndicator color={C.primary} style={{ padding: 16 }} /> : null
         }
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
+const getStyles = (C: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.background },
   grid: { paddingHorizontal: H_PAD, paddingTop: H_PAD },
   gridEmpty: { flexGrow: 1 },
   columnWrapper: { gap: GAP },
@@ -190,9 +227,9 @@ const styles = StyleSheet.create({
     marginBottom: GAP,
     borderRadius: BorderRadius.md,
     overflow: 'hidden',
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: C.surfaceElevated,
   },
-  cellSelected: { borderWidth: 2.5, borderColor: Colors.primary },
+  cellSelected: { borderWidth: 2.5, borderColor: C.primary },
   thumbnail: { width: '100%', height: '100%' },
   gradient: {
     ...StyleSheet.absoluteFillObject,
@@ -227,7 +264,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: Colors.primary,
+    backgroundColor: C.primary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -241,6 +278,6 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginTop: 60,
   },
-  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.textSecondary },
-  emptySub: { fontSize: FontSize.md, color: Colors.textMuted, textAlign: 'center' },
+  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', color: C.textSecondary },
+  emptySub: { fontSize: FontSize.md, color: C.textMuted, textAlign: 'center' },
 });

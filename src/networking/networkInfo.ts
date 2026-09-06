@@ -51,12 +51,13 @@ export async function getLocalIPAddress(): Promise<string> {
       console.log('[Network] IP via NetworkState:', state.ipAddress);
       return state.ipAddress;
     }
-  } catch {}
+  } catch (e) {
+    console.warn('[Network] NetworkState query failed:', e);
+  }
 
   // Strategy 3: fallback to hotspot gateway probe
   // We cannot directly enumerate interfaces on Android via JS, so return most likely gateway
   // The HostScreen will after hotspot creation re-query, and we prefer 192.168.43.1
-  // We'll try to detect if we're in hotspot mode by checking isOnHotspot heuristic
   console.warn('[Network] Falling back to hotspot gateway guess: 192.168.43.1');
   return '192.168.43.1';
 }
@@ -90,9 +91,14 @@ export async function probePeerReachable(ip: string, port: number, token: string
       signal: controller.signal as any,
     });
     clearTimeout(timeout);
-    return resp.ok;
-  } catch {
+    const isReachable = resp.ok;
+    if (!isReachable) {
+      console.warn(`[Network] Probe ${ip}:${port} returned ${resp.status}`);
+    }
+    return isReachable;
+  } catch (e) {
     clearTimeout(timeout);
+    console.warn(`[Network] Probe ${ip}:${port} failed:`, (e as any)?.message || 'timeout');
     return false;
   } finally {
     clearTimeout(timeout);
@@ -102,15 +108,25 @@ export async function probePeerReachable(ip: string, port: number, token: string
 // Get best IP to advertise in QR: try expo-network then fallbacks, and probe self-server
 export async function getBestHostIP(port: number, token: string): Promise<string> {
   const primary = await getLocalIPAddress();
-  if (await probePeerReachable(primary, port, token, 1500)) return primary;
+  
+  // Try probing primary IP first
+  if (await probePeerReachable(primary, port, token, 2000)) {
+    console.log('[Network] Primary IP probed successfully:', primary);
+    return primary;
+  }
+  
+  console.warn('[Network] Primary IP unreachable, trying fallbacks...');
+  
   // Try fallback gateways if primary is unreachable (common after hotspot just created, DHCP not ready)
   for (const fallback of HOTSPOT_FALLBACK_IPS) {
     if (fallback === primary) continue;
-    if (await probePeerReachable(fallback, port, token, 800)) {
+    if (await probePeerReachable(fallback, port, token, 1000)) {
       console.log('[Network] Fallback IP probed successfully:', fallback);
       return fallback;
     }
   }
+  
+  console.warn('[Network] No IP responded to probe, returning primary:', primary);
   return primary; // return primary even if probe failed, QR still usable
 }
 

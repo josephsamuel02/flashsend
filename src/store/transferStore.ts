@@ -45,6 +45,9 @@ interface TransferStore {
   replaceFiles: (files: Omit<TransferFile, 'bytesTransferred' | 'speed' | 'status'>[]) => void;
   updateFileProgress: (id: string, bytesTransferred: number, speed: number) => void;
   setFileStatus: (id: string, status: FileStatus, error?: string) => void;
+  setFileProgress: (id: string, bytesTransferred: number, speed: number) => void;
+  setFileError: (id: string, error: string) => void;
+  getFileById: (id: string) => TransferFile | undefined;
   setFileLocalUri: (id: string, localUri: string) => void;
   setFileResumeData: (id: string, resumeData: string) => void;
   cancelFile: (id: string) => void;
@@ -113,6 +116,21 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
       const totalTransferred = files.reduce((sum, f) => sum + (f.bytesTransferred || 0), 0);
       return { files, bytesTransferred: totalTransferred };
     }),
+
+  setFileProgress: (id, bytesTransferred, speed) =>
+    set((state) => {
+      const files = state.files.map((f) =>
+        f.id === id ? { ...f, bytesTransferred, speed } : f
+      );
+      return { files, bytesTransferred: files.reduce((sum, f) => sum + (f.bytesTransferred || 0), 0) };
+    }),
+
+  setFileError: (id, error) =>
+    set((state) => ({
+      files: state.files.map((f) => (f.id === id ? { ...f, error } : f)),
+    })),
+
+  getFileById: (id) => get().files.find(f => f.id === id),
 
   setFileStatus: (id, status, error) =>
     set((state) => {

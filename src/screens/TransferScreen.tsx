@@ -17,14 +17,17 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system/legacy';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { useTransferStore, TransferFile } from '../store/transferStore';
-import { downloadAllFiles, PeerConnection, retryFile } from '../networking/client';
-import { stopServer } from '../networking/server';
-import { Colors, Spacing, FontSize, BorderRadius, FontFamily } from '../theme/colors';
+import { downloadAllFiles, PeerConnection, retryFile, uploadAllFiles } from '../networking/client';
+import { stopServer, addFilesToManifest, updateFileProvider } from '../networking/server';
+import * as SendappNative from 'sendapp-native';
+import { useColors, type ThemeColors, Spacing, FontSize, BorderRadius, FontFamily } from '../theme/colors';
 import { stopHotspot } from 'flash-send-hotspot';
+import { useSelectionStore } from '../store/selectionStore';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -51,6 +54,8 @@ function getFileIcon(mime: string, name: string): keyof typeof MaterialIcons.gly
 }
 
 function FileRow({ file, peer, destDir }: { file: TransferFile; peer: PeerConnection | null; destDir: string }) {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   const progress = file.size > 0 ? Math.min(file.bytesTransferred / file.size, 1) : file.status === 'done' ? 1 : 0;
   const progressAnim = useRef(new Animated.Value(progress)).current;
   const { cancelFile, setFileStatus } = useTransferStore();
@@ -64,11 +69,11 @@ function FileRow({ file, peer, destDir }: { file: TransferFile; peer: PeerConnec
   }, [progress, progressAnim]);
 
   const statusColor =
-    file.status === 'done' ? Colors.success
-    : file.status === 'error' ? Colors.error
-    : file.status === 'cancelled' ? Colors.textMuted
-    : file.status === 'active' ? Colors.primary
-    : Colors.textMuted;
+    file.status === 'done' ? C.success
+    : file.status === 'error' ? C.error
+    : file.status === 'cancelled' ? C.textMuted
+    : file.status === 'active' ? C.primary
+    : C.textMuted;
 
   const statusIcon =
     file.status === 'done' ? 'check-circle'
@@ -118,7 +123,7 @@ function FileRow({ file, peer, destDir }: { file: TransferFile; peer: PeerConnec
             {file.direction === 'outgoing' ? 'Sending • ' : 'Receiving • '}{formatBytes(file.size)} • {file.mimeType.split('/').pop()}
           </Text>
         </View>
-        <Text style={[styles.fileDirection, { color: file.direction === 'outgoing' ? Colors.primary : Colors.success }]}>
+        <Text style={[styles.fileDirection, { color: file.direction === 'outgoing' ? C.primary : C.success }]}>
           {file.direction === 'outgoing' ? 'SEND' : 'RECV'}
         </Text>
         {(file.status === 'pending' || file.status === 'active') && (
@@ -127,7 +132,7 @@ function FileRow({ file, peer, destDir }: { file: TransferFile; peer: PeerConnec
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={styles.cancelBtn}
           >
-            <MaterialIcons name="close" size={18} color={Colors.textMuted} />
+            <MaterialIcons name="close" size={18} color={C.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -150,22 +155,22 @@ function FileRow({ file, peer, destDir }: { file: TransferFile; peer: PeerConnec
         </Text>
         {file.status === 'active' && <Text style={styles.speedText}>{formatSpeed(file.speed)} • {Math.round(progress * 100)}%</Text>}
         {file.status === 'pending' && <Text style={styles.statusText}>Waiting…</Text>}
-        {file.status === 'done' && <Text style={[styles.statusText, { color: Colors.success }]}>Done ✓</Text>}
-        {file.status === 'error' && <Text style={[styles.statusText, { color: Colors.error }]} numberOfLines={1}>{file.error?.slice(0, 60) || 'Failed'}</Text>}
+        {file.status === 'done' && <Text style={[styles.statusText, { color: C.success }]}>Done ✓</Text>}
+        {file.status === 'error' && <Text style={[styles.statusText, { color: C.error }]} numberOfLines={1}>{file.error?.slice(0, 60) || 'Failed'}</Text>}
         {file.status === 'cancelled' && <Text style={styles.statusText}>Cancelled</Text>}
         {!['active', 'pending'].includes(file.status) && <Text style={styles.metaText}>{Math.round(progress * 100)}%</Text>}
       </View>
 
       {file.status === 'error' && peer && file.direction === 'incoming' && (
         <TouchableOpacity onPress={handleRetry} style={styles.retryInline}>
-          <MaterialIcons name="refresh" size={16} color={Colors.primary} />
+          <MaterialIcons name="refresh" size={16} color={C.primary} />
           <Text style={styles.retryInlineText}>Retry</Text>
         </TouchableOpacity>
       )}
 
       {file.status === 'done' && (
         <TouchableOpacity onPress={handleOpen} style={styles.openInline}>
-          <MaterialIcons name="open-in-new" size={14} color={Colors.primary} />
+          <MaterialIcons name="open-in-new" size={14} color={C.primary} />
           <Text style={styles.openInlineText}>Open</Text>
         </TouchableOpacity>
       )}
@@ -174,8 +179,11 @@ function FileRow({ file, peer, destDir }: { file: TransferFile; peer: PeerConnec
 }
 
 export default function TransferScreen() {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   const navigation = useNavigation<any>();
   const route = useRoute() as any;
+  const insets = useSafeAreaInsets();
   const {
     files,
     totalBytes,
@@ -183,12 +191,14 @@ export default function TransferScreen() {
     sessionState,
     clearSession,
     archiveSession,
+    addFiles,
   } = useTransferStore();
 
   const peer: PeerConnection | null = route.params?.peer ?? null;
   const manifestFiles = route.params?.files ?? null;
   const destDirRef = useRef<string>('');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showSendMore, setShowSendMore] = useState(false);
 
   // Keep screen awake during transfer
   useEffect(() => {
@@ -201,7 +211,20 @@ export default function TransferScreen() {
     const startDownload = async () => {
       if (peer && manifestFiles && !isDownloading) {
         setIsDownloading(true);
-        const destDir = FileSystem.documentDirectory + 'SendApp/received/';
+        // Base dir for FlashSend categorized saves — client will route per file to Images/Videos/Apps/Documents etc
+        let destDir: string = FileSystem.documentDirectory + 'FlashSend/';
+        try {
+          const nativeBase = (SendappNative as any).getFlashSendBaseDir?.() as string | null;
+          if (nativeBase) {
+            const uri = nativeBase.startsWith('file://') ? nativeBase : `file://${nativeBase.replace(/\/+$/, '')}/`;
+            destDir = uri;
+          }
+          // Ensure categorized subfolders exist even before downloads (native does it too)
+          try {
+            const ensure = (SendappNative as any).ensureFlashSendDirs as (() => Promise<Record<string,string>>) | undefined;
+            if (ensure) await ensure();
+          } catch {}
+        } catch {}
         destDirRef.current = destDir;
         try {
           const info = await FileSystem.getInfoAsync(destDir);
@@ -274,57 +297,62 @@ export default function TransferScreen() {
     ]);
   };
 
+  const handleSendMoreFiles = () => {
+    if (!peer) {
+      Alert.alert('No Connection', 'Cannot send files - no peer connection available.');
+      return;
+    }
+
+    Alert.alert(
+      'Send More Files',
+      'Go back to the home screen to select additional files, then tap Send to transfer them to the connected device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Select Files',
+          onPress: () => {
+            navigation.navigate('Tabs');
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBack}>
-          <MaterialIcons name="arrow-back" size={22} color={Colors.textPrimary} />
+          <MaterialIcons name="arrow-back" size={22} color={C.textPrimary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>{isSender ? 'Sharing Files' : 'Receiving Files'}</Text>
-          <Text style={styles.headerSub}>
-            {files.length} files • {formatBytes(totalBytes)} • {isSender ? 'Hotspot active' : peer ? `${peer.ip}:${peer.port}` : 'Waiting'}
-          </Text>
+          <Text style={styles.headerTitle}>{isSender ? 'Sending' : 'Receiving'}</Text>
+          <Text style={styles.headerSub}>{files.length} files • {formatBytes(totalBytes)}</Text>
         </View>
         {sessionState !== 'idle' && (
           <View style={[styles.activeBadge, allDone && styles.activeBadgeDone]}>
-            <View style={[styles.activeDot, allDone && { backgroundColor: Colors.success }]} />
-            <Text style={[styles.activeBadgeText, allDone && { color: Colors.success }]}>{allDone ? 'Done' : 'Live'}</Text>
+            <View style={[styles.activeDot, allDone && { backgroundColor: C.success }]} />
+            <Text style={[styles.activeBadgeText, allDone && { color: C.success }]}>{allDone ? 'Done' : 'Live'}</Text>
           </View>
         )}
       </View>
 
       <View style={styles.summary}>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>{allDone ? 'Completed' : isDownloading ? 'Downloading…' : incomingCount > 0 ? 'Transferring…' : 'Hosting… ready for receiver'}</Text>
+          <Text style={styles.summaryLabel}>{allDone ? 'Completed' : 'Transferring'}</Text>
           <Text style={styles.summaryValue}>{Math.round(overallProgress * 100)}%</Text>
         </View>
         <View style={styles.progressTrackLarge}>
-          <View style={[styles.progressFillLarge, { width: `${overallProgress * 100}%`, backgroundColor: errorCount > 0 && doneCount === 0 ? Colors.error : Colors.primary }]} />
+          <View style={[styles.progressFillLarge, { width: `${overallProgress * 100}%`, backgroundColor: errorCount > 0 && doneCount === 0 ? C.error : C.primary }]} />
         </View>
         <View style={styles.summaryStats}>
           <Text style={styles.statText}>{formatBytes(bytesTransferred)} / {formatBytes(totalBytes)}</Text>
-          <Text style={styles.statText}>{doneCount}/{files.length} done{errorCount > 0 ? ` • ${errorCount} failed` : ''}</Text>
+          <Text style={styles.statText}>{doneCount}/{files.length} • {errorCount > 0 ? `${errorCount} failed` : 'All good'}</Text>
         </View>
-
-        {isSender && !peer && (
-          <View style={styles.senderHint}>
-            <MaterialIcons name="wifi-tethering" size={16} color={Colors.primary} />
-            <Text style={styles.senderHintText}>Keep this screen open. Receiver scans your QR to download.</Text>
-          </View>
-        )}
-
-        {errorCount > 0 && (
-          <View style={styles.errorBanner}>
-            <MaterialIcons name="error-outline" size={16} color={Colors.error} />
-            <Text style={styles.errorBannerText}>{errorCount} file(s) failed — you can retry each one.</Text>
-          </View>
-        )}
       </View>
 
       {files.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <MaterialIcons name="inbox" size={56} color={Colors.surfaceBorder} />
+          <MaterialIcons name="inbox" size={56} color={C.surfaceBorder} />
           <Text style={styles.emptyTitle}>No active transfer</Text>
           <Text style={styles.emptySub}>Start from Send or Receive.</Text>
           <TouchableOpacity onPress={handleDone} style={styles.doneButtonEmpty}>
@@ -353,41 +381,47 @@ export default function TransferScreen() {
       )}
 
       {files.length > 0 && (
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
           {allDone ? (
-            <TouchableOpacity style={styles.doneButton} onPress={handleDone} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.doneButton} onPress={handleDone}>
               <MaterialIcons name="check" size={22} color="white" />
-              <Text style={styles.doneButtonText}>Done — Back to Home</Text>
+              <Text style={styles.doneButtonText}>Done</Text>
             </TouchableOpacity>
-          ) : (
-            <View style={styles.bgWarning}>
-              <MaterialIcons name="info-outline" size={16} color={Colors.primary} />
-              <Text style={styles.bgWarningText}>Keep phone awake and app in foreground for fastest speed. Transfers pause in background.</Text>
-            </View>
-          )}
+          ) : null}
         </View>
+      )}
+
+      {/* Floating action button to send more files - only show if peer connected */}
+      {peer && sessionState === 'connected' && (
+        <TouchableOpacity
+          style={[styles.fabButton, { bottom: Math.max(insets.bottom, 16) + 88 }]}
+          onPress={handleSendMoreFiles}
+        >
+          <MaterialIcons name="add" size={28} color="white" />
+          <Text style={styles.fabText}>Send More</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const getStyles = (C: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
     paddingTop: Platform.OS === 'android' ? Spacing.lg + 8 : 60,
     paddingBottom: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: C.surface,
     gap: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceBorder,
+    borderBottomColor: C.surfaceBorder,
     elevation: 2,
   },
-  headerBack: { padding: 8, marginLeft: -4, borderRadius: 20, backgroundColor: Colors.surfaceElevated },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary, fontFamily: FontFamily.bold },
-  headerSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  headerBack: { padding: 8, marginLeft: -4, borderRadius: 20, backgroundColor: C.surfaceElevated },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: C.textPrimary, fontFamily: FontFamily.bold },
+  headerSub: { fontSize: 12, color: C.textMuted, marginTop: 2 },
   activeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -397,111 +431,89 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: BorderRadius.round,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: C.primary,
   },
-  activeBadgeDone: { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: Colors.success },
-  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary },
-  activeBadgeText: { color: Colors.primary, fontSize: 12, fontWeight: '700' },
+  activeBadgeDone: { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: C.success },
+  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.primary },
+  activeBadgeText: { color: C.primary, fontSize: 12, fontWeight: '700' },
   summary: {
-    backgroundColor: Colors.surface,
+    backgroundColor: C.surface,
     padding: Spacing.md,
     gap: Spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceBorder,
+    borderBottomColor: C.surfaceBorder,
   },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  summaryLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
-  summaryValue: { color: Colors.textPrimary, fontWeight: '800', fontSize: 18 },
-  progressTrackLarge: { height: 10, backgroundColor: Colors.surfaceBorder, borderRadius: BorderRadius.round, overflow: 'hidden' },
+  summaryLabel: { color: C.textSecondary, fontSize: 13, fontWeight: '600' },
+  summaryValue: { color: C.textPrimary, fontWeight: '800', fontSize: 18 },
+  progressTrackLarge: { height: 10, backgroundColor: C.surfaceBorder, borderRadius: BorderRadius.round, overflow: 'hidden' },
   progressFillLarge: { height: '100%', borderRadius: BorderRadius.round },
   summaryStats: { flexDirection: 'row', justifyContent: 'space-between' },
-  statText: { color: Colors.textMuted, fontSize: 12, fontFamily: FontFamily.medium },
-  senderHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.primaryGlow,
-    padding: 10,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  senderHintText: { flex: 1, color: Colors.primary, fontSize: 12, fontWeight: '600' },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(239,68,68,0.08)',
-    padding: 10,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.error,
-  },
-  errorBannerText: { color: Colors.error, fontSize: 13, fontWeight: '600' },
+  statText: { color: C.textMuted, fontSize: 12, fontFamily: FontFamily.medium },
   list: { padding: Spacing.md, paddingBottom: 120, gap: 8 },
   listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  listHeaderText: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
-  listHeaderCancel: { color: Colors.error, fontSize: 12, fontWeight: '700' },
+  listHeaderText: { color: C.textMuted, fontSize: 12, fontWeight: '600' },
+  listHeaderCancel: { color: C.error, fontSize: 12, fontWeight: '700' },
   fileRow: {
-    backgroundColor: Colors.surface,
+    backgroundColor: C.surface,
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     gap: Spacing.sm,
     borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+    borderColor: C.surfaceBorder,
     elevation: 1,
   },
   fileRowHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   iconBox: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  fileRowName: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600', flex: 1 },
-  fileRowSub: { color: Colors.textMuted, fontSize: 11, marginTop: 1 },
+  fileRowName: { color: C.textPrimary, fontSize: 14, fontWeight: '600', flex: 1 },
+  fileRowSub: { color: C.textMuted, fontSize: 11, marginTop: 1 },
   fileDirection: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  cancelBtn: { padding: 4, backgroundColor: Colors.surfaceElevated, borderRadius: 12 },
-  progressTrack: { height: 6, backgroundColor: Colors.surfaceBorder, borderRadius: BorderRadius.round, overflow: 'hidden' },
+  cancelBtn: { padding: 4, backgroundColor: C.surfaceElevated, borderRadius: 12 },
+  progressTrack: { height: 6, backgroundColor: C.surfaceBorder, borderRadius: BorderRadius.round, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: BorderRadius.round },
   fileRowMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.sm },
-  metaText: { color: Colors.textMuted, fontSize: 11, fontFamily: FontFamily.medium },
-  speedText: { color: Colors.primary, fontSize: 11, fontWeight: '700' },
+  metaText: { color: C.textMuted, fontSize: 11, fontFamily: FontFamily.medium },
+  speedText: { color: C.primary, fontSize: 11, fontWeight: '700' },
   statusText: { fontSize: 11, fontWeight: '600' },
   retryInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     alignSelf: 'flex-start',
-    backgroundColor: Colors.primaryGlow,
+    backgroundColor: C.primaryGlow,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: BorderRadius.round,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: C.primary,
   },
-  retryInlineText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },
+  retryInlineText: { color: C.primary, fontWeight: '700', fontSize: 13 },
   openInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     alignSelf: 'flex-start',
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: C.surfaceElevated,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: BorderRadius.round,
     borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+    borderColor: C.surfaceBorder,
   },
-  openInlineText: { color: Colors.primary, fontWeight: '600', fontSize: 13 },
+  openInlineText: { color: C.primary, fontWeight: '600', fontSize: 13 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.md },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.textSecondary },
-  emptySub: { fontSize: 14, color: Colors.textMuted, textAlign: 'center' },
-  doneButtonEmpty: { backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: BorderRadius.round, marginTop: 8 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: C.textSecondary },
+  emptySub: { fontSize: 14, color: C.textMuted, textAlign: 'center' },
+  doneButtonEmpty: { backgroundColor: C.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: BorderRadius.round, marginTop: 8 },
   footer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     padding: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: C.surface,
     borderTopWidth: 1,
-    borderTopColor: Colors.surfaceBorder,
+    borderTopColor: C.surfaceBorder,
     elevation: 8,
   },
   doneButton: {
@@ -509,21 +521,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.success,
+    backgroundColor: C.success,
     paddingVertical: 14,
     borderRadius: BorderRadius.round,
     elevation: 2,
   },
   doneButtonText: { color: 'white', fontWeight: '800', fontSize: 16 },
-  bgWarning: {
+  fabButton: {
+    position: 'absolute',
+    bottom: 100,
+    right: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.surfaceElevated,
-    padding: 12,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+    gap: 8,
+    backgroundColor: C.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: BorderRadius.round,
+    elevation: 6,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
-  bgWarningText: { flex: 1, color: Colors.textMuted, fontSize: 12, lineHeight: 16 },
+  fabText: { color: 'white', fontWeight: '700', fontSize: 15 },
 });

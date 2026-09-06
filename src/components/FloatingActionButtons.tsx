@@ -7,7 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelectionStore } from '../store/selectionStore';
 import { useTransferStore } from '../store/transferStore';
-import { Colors, Spacing, BorderRadius } from '../theme/colors';
+import { useColors, type ThemeColors, Spacing, BorderRadius } from '../theme/colors';
 
 interface Props {
   onSendPress: () => void;
@@ -15,6 +15,8 @@ interface Props {
 }
 
 export default function FloatingActionButtons({ onSendPress, onReceivePress }: Props) {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const selectedCount = useSelectionStore((s) => Object.keys(s.selectedFiles).length);
   const totalSize = useSelectionStore((s) => Object.values(s.selectedFiles).reduce((sum, f) => sum + (f.size || 0), 0));
@@ -36,7 +38,7 @@ export default function FloatingActionButtons({ onSendPress, onReceivePress }: P
   const sendDisabled = false; // always enabled per spec, even with 0 files (QR still generated)
 
   return (
-    <View style={[styles.container, { bottom: Math.max(insets.bottom, 12) + 12 }]} pointerEvents="box-none">
+    <View style={[styles.container, { bottom: Math.max(insets.bottom, 20) + 16 }]} pointerEvents="box-none">
       {/* Receive — left */}
       <TouchableOpacity
         style={[styles.fab, styles.fabReceive]}
@@ -70,7 +72,7 @@ export default function FloatingActionButtons({ onSendPress, onReceivePress }: P
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (C: ThemeColors) => StyleSheet.create({
   container: {
     position: 'absolute',
     left: 0,
@@ -97,12 +99,12 @@ const styles = StyleSheet.create({
     minWidth: 120,
     justifyContent: 'center',
   },
-  fabReceive: { backgroundColor: Colors.primary, shadowColor: Colors.primary },
+  fabReceive: { backgroundColor: C.primary, shadowColor: C.primary },
   fabSend: { backgroundColor: '#0A0A1A', shadowColor: '#000', borderColor: 'rgba(255,255,255,0.14)' },
   fabDisabled: { opacity: 0.6 },
   fabLabel: { color: 'white', fontFamily: 'Outfit_700Bold', fontSize: 14, letterSpacing: 0.3 },
   countBadge: {
-    backgroundColor: Colors.primary,
+    backgroundColor: C.primary,
     minWidth: 22,
     height: 22,
     borderRadius: 11,

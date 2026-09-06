@@ -1,7 +1,37 @@
 // src/theme/colors.ts
-// Design system color tokens for Flash Send
+// Design system color tokens for Flash Send (light + dark)
 
-export const Colors = {
+import { useSettingsStore } from '../store/settingsStore';
+
+export interface Palette {
+  background: string;
+  surface: string;
+  surfaceElevated: string;
+  surfaceBorder: string;
+  primary: string;
+  primaryLight: string;
+  primaryDark: string;
+  primaryGlow: string;
+  secondary: string;
+  secondaryLight: string;
+  success: string;
+  successDark: string;
+  warning: string;
+  error: string;
+  errorDark: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  textDisabled: string;
+  fabSend: string;
+  fabReceive: string;
+  gradientPrimary: readonly string[];
+  gradientSecondary: readonly string[];
+  gradientSuccess: readonly string[];
+  gradientCard: readonly string[];
+}
+
+export const Colors: Palette = {
   // Backgrounds - white for most of the app, royal blue for navigation
   background: '#FFFFFF',
   surface: '#FFFFFF',
@@ -19,8 +49,8 @@ export const Colors = {
   secondaryLight: '#6487E8',
 
   // Semantic
-  success: '#10B981',
-  successDark: '#059669',
+  success: '#0E9F6E',
+  successDark: '#057A55',
   warning: '#F59E0B',
   error: '#EF4444',
   errorDark: '#DC2626',
@@ -38,9 +68,57 @@ export const Colors = {
   // Gradients (as arrays for LinearGradient)
   gradientPrimary: ['#4169E1', '#2E50B3'] as const,
   gradientSecondary: ['#4169E1', '#2E50B3'] as const,
-  gradientSuccess: ['#10B981', '#059669'] as const,
+  gradientSuccess: ['#0E9F6E', '#057A55'] as const,
   gradientCard: ['#FFFFFF', '#F5F5F5'] as const,
 };
+
+export const DarkColors: Palette = {
+  // Backgrounds - dark navy to match brand
+  background: '#0E1322',
+  surface: '#151C31',
+  surfaceElevated: '#1D2640',
+  surfaceBorder: '#2C3A5C',
+
+  // Royal Blue - kept for brand surfaces
+  primary: '#4169E1',
+  primaryLight: '#7C9BF5',
+  primaryDark: '#2E50B3',
+  primaryGlow: 'rgba(124, 155, 245, 0.25)',
+
+  // Secondary
+  secondary: '#7C9BF5',
+  secondaryLight: '#9DB4F7',
+
+  // Semantic
+  success: '#2FBF8F',
+  successDark: '#0E9F6E',
+  warning: '#F5A623',
+  error: '#F06464',
+  errorDark: '#DC2626',
+
+  // Text
+  textPrimary: '#F2F4F7',
+  textSecondary: '#AEB7CC',
+  textMuted: '#7E89A3',
+  textDisabled: '#3B4763',
+
+  // FAB colors - royal blue with white icons
+  fabSend: '#4169E1',
+  fabReceive: '#4169E1',
+
+  // Gradients (as arrays for LinearGradient)
+  gradientPrimary: ['#4169E1', '#2E50B3'] as const,
+  gradientSecondary: ['#4169E1', '#2E50B3'] as const,
+  gradientSuccess: ['#2FBF8F', '#0E9F6E'] as const,
+  gradientCard: ['#151C31', '#1D2640'] as const,
+};
+
+export type ThemeColors = Palette;
+
+export function useColors(): ThemeColors {
+  const darkMode = useSettingsStore((s) => s.darkMode);
+  return darkMode ? DarkColors : Colors;
+}
 
 export const Spacing = {
   xs: 4,

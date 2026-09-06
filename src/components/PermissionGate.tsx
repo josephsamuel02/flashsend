@@ -5,7 +5,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Spacing, FontSize, BorderRadius } from '../theme/colors';
+import { useColors, type ThemeColors, Spacing, FontSize, BorderRadius } from '../theme/colors';
 
 interface Props {
   iconName: keyof typeof MaterialIcons.glyphMap;
@@ -16,10 +16,12 @@ interface Props {
 }
 
 export default function PermissionGate({ iconName, title, description, onRequest, denied }: Props) {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   return (
     <View style={styles.container}>
       <View style={styles.iconContainer}>
-        <MaterialIcons name={iconName} size={48} color={Colors.primary} />
+        <MaterialIcons name={iconName} size={48} color={C.primary} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.description}>{description}</Text>
@@ -35,7 +37,7 @@ export default function PermissionGate({ iconName, title, description, onRequest
             accessibilityRole="button"
             accessibilityLabel="Open app settings"
           >
-            <MaterialIcons name="settings" size={16} color={Colors.background} />
+            <MaterialIcons name="settings" size={16} color={C.background} />
             <Text style={styles.buttonText}>Open Settings</Text>
           </TouchableOpacity>
         </View>
@@ -46,7 +48,7 @@ export default function PermissionGate({ iconName, title, description, onRequest
           accessibilityRole="button"
           accessibilityLabel={`Grant ${title}`}
         >
-          <MaterialIcons name="check-circle" size={18} color={Colors.background} />
+          <MaterialIcons name="check-circle" size={18} color={C.background} />
           <Text style={styles.buttonText}>Grant Access</Text>
         </TouchableOpacity>
       )}
@@ -54,7 +56,7 @@ export default function PermissionGate({ iconName, title, description, onRequest
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (C: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
@@ -66,22 +68,22 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: Colors.primaryGlow,
+    backgroundColor: C.primaryGlow,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: C.primary,
     marginBottom: Spacing.sm,
   },
   title: {
     fontSize: FontSize.xl,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: C.textPrimary,
     textAlign: 'center',
   },
   description: {
     fontSize: FontSize.md,
-    color: Colors.textSecondary,
+    color: C.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -89,7 +91,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.primary,
+    backgroundColor: C.primary,
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.round,
@@ -99,13 +101,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.warning,
+    backgroundColor: C.warning,
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.round,
   },
   buttonText: {
-    color: Colors.background,
+    color: C.background,
     fontWeight: '700',
     fontSize: FontSize.md,
   },
@@ -114,7 +116,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deniedText: {
-    color: Colors.warning,
+    color: C.warning,
     textAlign: 'center',
     fontSize: FontSize.sm,
   },

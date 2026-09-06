@@ -11,16 +11,16 @@
     "splash": {
       "image": "./assets/flash-send-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#4169E1"
+      "backgroundColor": "#000080"
     },
     "androidStatusBar": {
-      "backgroundColor": "#4169E1",
+      "backgroundColor": "#000080",
       "barStyle": "light-content"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundColor": "#4169E1",
+        "backgroundColor": "#000080",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.flashsend.app",
@@ -35,19 +35,19 @@
         "android.permission.NEARBY_WIFI_DEVICES",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.INTERNET",
-        "android.permission.POST_NOTIFICATIONS",
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.CAMERA",
+        "android.permission.WAKE_LOCK",
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+        "android.permission.QUERY_ALL_PACKAGES"
+      ],
+      "blockedPermissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-        "android.permission.ACCESS_MEDIA_LOCATION",
-        "android.permission.QUERY_ALL_PACKAGES",
-        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.POST_NOTIFICATIONS",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
-        "android.permission.REQUEST_INSTALL_PACKAGES"
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
       ]
     },
     "web": {

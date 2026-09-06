@@ -1,8 +1,8 @@
 // src/navigation/MainNavigator.tsx
 // Android-optimized navigation with Xender-like tabs and top bar
 
-import React from 'react';
-import { View, StyleSheet, Text, Image, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Text, Image, Pressable, TouchableOpacity, Modal } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
@@ -13,19 +13,26 @@ import PhotosTab from '../screens/tabs/PhotosTab';
 import VideosTab from '../screens/tabs/VideosTab';
 import AudioTab from '../screens/tabs/AudioTab';
 import FilesTab from '../screens/tabs/FilesTab';
+import StatusTab from '../screens/tabs/StatusTab';
 import FloatingActionButtons from '../components/FloatingActionButtons';
 import HostScreen from '../screens/HostScreen';
 import ScanScreen from '../screens/ScanScreen';
 import TransferScreen from '../screens/TransferScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import AboutScreen from '../screens/AboutScreen';
+import MediaViewerScreen from '../screens/MediaViewerScreen';
 import { useSelectionStore } from '../store/selectionStore';
 import { useTransferStore } from '../store/transferStore';
-import { Colors, Spacing, FontSize } from '../theme/colors';
+import { useSettingsStore } from '../store/settingsStore';
+import { useColors, type ThemeColors, Spacing, FontSize } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Tab = createMaterialTopTabNavigator();
 const Stack = createStackNavigator();
 
 function TabBadge({ count }: { count: number }) {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   if (count <= 0) return null;
   return (
     <View style={styles.badge}>
@@ -35,6 +42,8 @@ function TabBadge({ count }: { count: number }) {
 }
 
 function TabIcon({ name, focused, badge }: { name: keyof typeof Feather.glyphMap; focused: boolean; badge?: number }) {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   return (
     <View style={styles.tabIconWrap}>
       <Feather name={name} size={20} color="white" style={{ opacity: focused ? 1 : 0.72 }} />
@@ -44,10 +53,19 @@ function TabIcon({ name, focused, badge }: { name: keyof typeof Feather.glyphMap
 }
 
 function TabNavigator() {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const sessionState = useTransferStore((s) => s.sessionState);
+  const session = useTransferStore((s) => s.session);
   const selectedFiles = useSelectionStore((s) => s.selectedFiles);
+  const { addFiles } = useTransferStore();
+  const { clearSelection } = useSelectionStore();
+  const loadSettings = useSettingsStore((s) => s.load);
+  const darkMode = useSettingsStore((s) => s.darkMode);
+  const setDarkMode = useSettingsStore((s) => s.setDarkMode);
+  const [menuVisible, setMenuVisible] = useState(false);
   const isTransferActive = sessionState === 'hosting' || sessionState === 'connected' || sessionState === 'done';
   const totalSelected = Object.keys(selectedFiles).length;
   const totalByTab = {
@@ -58,8 +76,67 @@ function TabNavigator() {
     Files: Object.values(selectedFiles).filter((f) => f.tab === 'Files').length,
   };
 
-  const handleSendPress = () => {
-    navigation.navigate('Host');
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  const handleSendPress = async () => {
+    // If transfer is active and we have a peer connection, upload selected files
+    if (isTransferActive && session?.peerIP && session?.peerPort && totalSelected > 0) {
+      const { Alert } = require('react-native');
+      const { uploadAllFiles } = require('../networking/client');
+      
+      Alert.alert(
+        'Send to Connected Device',
+        `Send ${totalSelected} selected file(s) to the connected device?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Send',
+            onPress: async () => {
+              const filesToUpload = Object.values(selectedFiles);
+              
+              // Add to transfer store
+              const transferFiles = filesToUpload.map((f: any) => ({
+                id: f.id,
+                name: f.name,
+                size: f.size || 0,
+                mimeType: f.mimeType,
+                direction: 'outgoing' as const,
+                localUri: f.uri,
+              }));
+              addFiles(transferFiles);
+              
+              // Navigate to transfer screen to show progress
+              navigation.navigate('Transfer');
+              
+              // Upload to peer
+              try {
+                const peer = {
+                  ip: session.peerIP!,
+                  port: session.peerPort!,
+                  token: session.token,
+                };
+                await uploadAllFiles(peer, filesToUpload.map((f: any) => ({
+                  id: f.id,
+                  name: f.name,
+                  uri: f.uri,
+                  size: f.size || 0,
+                  mimeType: f.mimeType,
+                })));
+                clearSelection();
+                Alert.alert('Success', `Sent ${filesToUpload.length} file(s)!`);
+              } catch (err: any) {
+                Alert.alert('Upload Failed', err?.message || 'Could not send files');
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // Normal behavior: navigate to Host screen to start new transfer
+      navigation.navigate('Host');
+    }
   };
 
   const handleReceivePress = () => {
@@ -72,6 +149,13 @@ function TabNavigator() {
       {/* Top Branding Bar — Xender style */}
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
         <View style={styles.topBarContent}>
+          <TouchableOpacity
+            onPress={() => setDarkMode(!darkMode)}
+            style={styles.menuBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MaterialIcons name={darkMode ? 'light-mode' : 'dark-mode'} size={22} color="white" />
+          </TouchableOpacity>
           <Image source={require('../../assets/flash-send-icon.png')} style={styles.logo} resizeMode="cover" />
           <View style={styles.brandWrap}>
             <Text style={styles.brandTitle}>Flash Send</Text>
@@ -79,7 +163,7 @@ function TabNavigator() {
           </View>
           {totalSelected > 0 && (
             <View style={styles.selectedPill}>
-              <MaterialIcons name="check-circle" size={16} color={Colors.primary} />
+              <MaterialIcons name="check-circle" size={16} color={C.primary} />
               <Text style={styles.selectedPillText}>{totalSelected}</Text>
             </View>
           )}
@@ -89,14 +173,49 @@ function TabNavigator() {
               <Text style={styles.transferPillText}>Transfer</Text>
             </Pressable>
           )}
+          <TouchableOpacity
+            onPress={() => setMenuVisible(true)}
+            style={styles.menuBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MaterialIcons name="more-vert" size={24} color="white" />
+          </TouchableOpacity>
         </View>
       </View>
+
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+        <Pressable style={styles.menuBackdrop} onPress={() => setMenuVisible(false)}>
+          <View style={[styles.menuBox, { top: insets.top + 56 }]}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuVisible(false);
+                navigation.navigate('Settings');
+              }}
+            >
+              <MaterialIcons name="settings" size={20} color={C.textPrimary} />
+              <Text style={styles.menuText}>Settings</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuVisible(false);
+                navigation.navigate('About');
+              }}
+            >
+              <MaterialIcons name="info-outline" size={20} color={C.textPrimary} />
+              <Text style={styles.menuText}>About us</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Tab.Navigator
         initialRouteName="Apps"
         screenOptions={{
           tabBarStyle: {
-            backgroundColor: Colors.primary,
+            backgroundColor: C.primary,
             elevation: 0,
             shadowOpacity: 0,
             borderTopWidth: 0,
@@ -129,6 +248,14 @@ function TabNavigator() {
           lazy: true,
         }}
       >
+        <Tab.Screen
+          name="Status"
+          component={StatusTab}
+          options={{
+            tabBarLabel: 'Status',
+            tabBarIcon: ({ focused }) => <TabIcon name="message-circle" focused={focused} />,
+          }}
+        />
         <Tab.Screen
           name="Apps"
           component={AppsTab}
@@ -183,14 +310,17 @@ export default function MainNavigator() {
       <Stack.Screen name="Host" component={HostScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Scan" component={ScanScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Transfer" component={TransferScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="About" component={AboutScreen} />
+      <Stack.Screen name="MediaViewer" component={MediaViewerScreen} options={{ gestureEnabled: true }} />
     </Stack.Navigator>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const getStyles = (C: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
   topBar: {
-    backgroundColor: Colors.primary,
+    backgroundColor: C.primary,
     paddingBottom: 10,
     paddingHorizontal: Spacing.md,
     elevation: 6,
@@ -215,7 +345,7 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     elevation: 2,
   },
-  selectedPillText: { color: Colors.primary, fontWeight: '800', fontSize: 13 },
+  selectedPillText: { color: C.primary, fontWeight: '800', fontSize: 13 },
   transferPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -228,7 +358,25 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   transferPillText: { color: 'white', fontWeight: '700', fontSize: 12 },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#00E676' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#12B76A' },
+  menuBtn: { padding: 6, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.14)' },
+  menuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' },
+  menuBox: {
+    position: 'absolute',
+    right: 12,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    minWidth: 180,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    overflow: 'hidden',
+  },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
+  menuText: { fontSize: 15, fontWeight: '600', color: C.textPrimary },
+  menuDivider: { height: 1, backgroundColor: C.surfaceBorder },
   tabIconWrap: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
   badge: {
     position: 'absolute',
@@ -242,8 +390,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
     borderWidth: 1.5,
-    borderColor: Colors.primary,
+    borderColor: C.primary,
     elevation: 1,
   },
-  badgeText: { color: Colors.primary, fontSize: 10, fontWeight: '800', lineHeight: 12 },
+  badgeText: { color: C.primary, fontSize: 10, fontWeight: '800', lineHeight: 12 },
 });

@@ -296,8 +296,8 @@ export async function startServer(
           const corsResponse = [
             'HTTP/1.1 204 No Content',
             'Access-Control-Allow-Origin: *',
-            'Access-Control-Allow-Methods: GET, HEAD, OPTIONS',
-            'Access-Control-Allow-Headers: x-session-token, Range, Content-Type',
+            'Access-Control-Allow-Methods: GET, HEAD, OPTIONS, POST',
+            'Access-Control-Allow-Headers: x-session-token, Range, Content-Type, Content-Length, X-File-Name, X-File-Size, X-Mime-Type',
             'Access-Control-Max-Age: 86400',
             'Content-Length: 0',
             'Connection: close',
@@ -409,6 +409,62 @@ export async function startServer(
           return;
         }
 
+        // POST /upload - receive file from peer
+        if (method === 'POST' && path === '/upload') {
+          try {
+            const fileName = headers['x-file-name'] ? decodeURIComponent(headers['x-file-name']) : 'uploaded_file';
+            const fileSize = headers['x-file-size'] ? parseInt(headers['x-file-size'], 10) : 0;
+            const mimeType = headers['x-mime-type'] || headers['content-type'] || 'application/octet-stream';
+            const contentLength = headers['content-length'] ? parseInt(headers['content-length'], 10) : 0;
+
+            console.log(`[Server] Receiving upload: ${fileName} (${fileSize} bytes, ${mimeType})`);
+
+            // Extract body from requestBuffer (data after \r\n\r\n)
+            const bodyStartIdx = requestBuffer.indexOf('\r\n\r\n') + 4;
+            let bodyData = Buffer.from(requestBuffer.substring(bodyStartIdx), 'utf8');
+
+            // If body not complete yet, accumulate more data
+            if (contentLength > 0 && bodyData.length < contentLength) {
+              headersParsed = false; // revert flag to continue receiving body
+              let totalReceived = bodyData.length;
+              const bodyChunks: Buffer[] = [bodyData];
+
+              return new Promise<void>((resolveUpload) => {
+                const bodyTimeout = setTimeout(() => {
+                  console.warn('[Server] Upload body timeout');
+                  httpResponse(socket, 408, 'Request Timeout', JSON.stringify({ error: 'Upload timeout' }));
+                  resolveUpload();
+                }, 120000); // 2min timeout for uploads
+
+                socket.on('data', (moreData) => {
+                  const chunk = typeof moreData === 'string' ? Buffer.from(moreData, 'utf8') : moreData;
+                  bodyChunks.push(chunk);
+                  totalReceived += chunk.length;
+
+                  if (totalReceived >= contentLength) {
+                    clearTimeout(bodyTimeout);
+                    const fullBody = Buffer.concat(bodyChunks);
+                    saveUploadedFile(fileName, fullBody, mimeType, socket);
+                    resolveUpload();
+                  }
+                });
+
+                socket.on('error', () => {
+                  clearTimeout(bodyTimeout);
+                  resolveUpload();
+                });
+              });
+            } else {
+              // Body already complete in first chunk
+              await saveUploadedFile(fileName, bodyData, mimeType, socket);
+            }
+          } catch (uploadErr) {
+            console.error('[Server] Upload error:', uploadErr);
+            httpResponse(socket, 500, 'Internal Server Error', JSON.stringify({ error: 'Upload failed', detail: String(uploadErr) }));
+          }
+          return;
+        }
+
         // Unknown route
         httpResponse(socket, 404, 'Not Found', JSON.stringify({ error: 'Not found', path, method }));
       });
@@ -432,9 +488,11 @@ export async function startServer(
       _isListening = false;
       // Handle EADDRINUSE specifically
       if (err?.message?.includes('EADDRINUSE') || err?.code === 'EADDRINUSE') {
-        reject(new Error(`Port ${DEFAULT_PORT} already in use. Another transfer may be active. Close it and retry.`));
+        reject(new Error(`Port ${DEFAULT_PORT} is already in use. Another file transfer may be active. Close other file sharing apps and try again.`));
+      } else if (err?.message?.includes('EACCES')) {
+        reject(new Error(`Permission denied to bind port ${DEFAULT_PORT}. This port requires no special permissions, but may be blocked by system policy.`));
       } else {
-        reject(err);
+        reject(new Error(`Server failed to start: ${err?.message || 'Unknown error'}`));
       }
     });
 
@@ -480,5 +538,86 @@ export function getCurrentManifest(): FileManifestEntry[] {
 
 export function getCurrentToken(): string {
   return _currentToken;
+}
+
+// Add files to manifest dynamically (for bidirectional transfer)
+export function addFilesToManifest(newFiles: FileManifestEntry[]) {
+  _manifest.push(...newFiles);
+  console.log(`[Server] Added ${newFiles.length} files to manifest, total now: ${_manifest.length}`);
+}
+
+// Update file provider (for bidirectional transfer)
+export function updateFileProvider(provider: FileProvider) {
+  _fileProvider = provider;
+}
+
+// Save uploaded file to FlashSend directory
+async function saveUploadedFile(fileName: string, bodyData: Buffer, mimeType: string, socket: any): Promise<void> {
+  try {
+    // Import SendappNative to get proper save directory
+    let destDir = FileSystem.documentDirectory + 'FlashSend/Received/';
+    try {
+      // Dynamic import to avoid bundling issues
+      const SendappNative = require('sendapp-native');
+      const nativeBase = SendappNative?.getFlashSendBaseDir?.();
+      if (nativeBase) {
+        destDir = (nativeBase.startsWith('file://') ? nativeBase : `file://${nativeBase}`) + 'Received/';
+      }
+    } catch {}
+
+    // Ensure directory exists
+    const dirInfo = await FileSystem.getInfoAsync(destDir);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(destDir, { intermediates: true });
+    }
+
+    // Generate unique filename if exists
+    let finalPath = destDir + fileName;
+    let counter = 1;
+    while ((await FileSystem.getInfoAsync(finalPath)).exists) {
+      const ext = fileName.lastIndexOf('.') > 0 ? fileName.substring(fileName.lastIndexOf('.')) : '';
+      const base = ext ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+      finalPath = `${destDir}${base}_${counter}${ext}`;
+      counter++;
+    }
+
+    // Check if bodyData looks like base64 string (fallback from fetch)
+    let fileBuffer = bodyData;
+    const bodyStr = bodyData.toString('utf8');
+    if (/^[A-Za-z0-9+/=]+$/.test(bodyStr.substring(0, Math.min(100, bodyStr.length)))) {
+      // Looks like base64, decode it
+      try {
+        fileBuffer = Buffer.from(bodyStr, 'base64');
+        console.log('[Server] Decoded base64 body for upload');
+      } catch {}
+    }
+
+    // Write file as base64
+    const base64Data = fileBuffer.toString('base64');
+    await FileSystem.writeAsStringAsync(finalPath, base64Data, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    const savedSize = (await FileSystem.getInfoAsync(finalPath)) as any;
+    console.log(`[Server] Saved upload: ${finalPath} (${savedSize?.size || fileBuffer.length} bytes)`);
+
+    // Notify the peer about successful save
+    httpResponse(socket, 200, 'OK', JSON.stringify({
+      success: true,
+      fileName,
+      size: fileBuffer.length,
+      savedPath: finalPath,
+    }));
+
+    // TODO: Optionally notify the transfer store about the new incoming file
+    // This would require importing useTransferStore, which might cause circular dependencies
+    // For now, receiver can manually refresh or the upload response can trigger a manifest refetch
+  } catch (err) {
+    console.error('[Server] saveUploadedFile error:', err);
+    httpResponse(socket, 500, 'Internal Server Error', JSON.stringify({
+      error: 'Failed to save file',
+      detail: String(err),
+    }));
+  }
 }
 

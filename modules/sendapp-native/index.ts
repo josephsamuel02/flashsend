@@ -5,6 +5,28 @@ export interface InstalledApp {
   packageName: string;
   icon?: number;
   iconBase64?: string | null;
+  isSystemApp?: boolean;
+}
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size: number;
+  mimeType: string;
+  modified: number;
+  extension: string;
+  childCount: number;
+  readable: boolean;
+  hidden: boolean;
+}
+
+export interface StorageRoot {
+  name: string;
+  path: string;
+  type: string;
+  readable: boolean;
+  writable: boolean;
 }
 
 interface SendappNativeModule {
@@ -15,6 +37,12 @@ interface SendappNativeModule {
   copyApkToCache?(packageName: string): Promise<string>;
   getFileSize?(uri: string): number;
   getApkSize?(packageName: string): number;
+  getStorageRoots?(): StorageRoot[];
+  listDirectory?(path: string): Promise<FileEntry[]>;
+  getFlashSendBaseDir?(): string | null;
+  ensureFlashSendDirs?(): Promise<Record<string, string>>;
+  getCategorizedSubfolder?(mimeType: string, fileName: string): string;
+  getDestPathForFile?(mimeType: string, fileName: string): string | null;
 }
 
 let nativeModule: SendappNativeModule | null = null;
@@ -79,4 +107,54 @@ export function getFileSize(uri: string): number {
 export function getApkSize(packageName: string): number {
   if (!nativeModule || typeof (nativeModule as any).getApkSize !== 'function') return 0;
   try { return (nativeModule as any).getApkSize(packageName); } catch { return 0; }
+}
+
+export function getStorageRoots(): StorageRoot[] {
+  if (!nativeModule || typeof (nativeModule as any).getStorageRoots !== 'function') return [];
+  try { return (nativeModule as any).getStorageRoots(); } catch { return []; }
+}
+
+export function listDirectory(path: string): Promise<FileEntry[]> {
+  if (!nativeModule || typeof (nativeModule as any).listDirectory !== 'function') {
+    return Promise.reject(new Error('listDirectory not available - rebuild dev-client'));
+  }
+  return (nativeModule as any).listDirectory(path);
+}
+
+export function getFlashSendBaseDir(): string | null {
+  if (!nativeModule || typeof (nativeModule as any).getFlashSendBaseDir !== 'function') return null;
+  try { return (nativeModule as any).getFlashSendBaseDir(); } catch { return null; }
+}
+
+export async function ensureFlashSendDirs(): Promise<Record<string, string>> {
+  if (!nativeModule || typeof (nativeModule as any).ensureFlashSendDirs !== 'function') return {};
+  return (nativeModule as any).ensureFlashSendDirs();
+}
+
+export function getCategorizedSubfolder(mimeType: string, fileName: string): string {
+  if (!nativeModule || typeof (nativeModule as any).getCategorizedSubfolder !== 'function') {
+    // JS fallback
+    const mime = (mimeType || '').toLowerCase();
+    const name = (fileName || '').toLowerCase();
+    const ext = name.split('.').pop() || '';
+    if (mime.startsWith('image/') || ['jpg','jpeg','png','gif','webp','bmp','heic'].includes(ext)) return 'Images';
+    if (mime.startsWith('video/') || ['mp4','mkv','avi','mov','wmv'].includes(ext)) return 'Videos';
+    if (mime.startsWith('audio/') || ['mp3','wav','ogg','m4a','flac'].includes(ext)) return 'Audio';
+    if (mime === 'application/vnd.android.package-archive' || ext === 'apk') return 'Apps';
+    if (['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','zip','rar'].includes(ext)) return 'Documents';
+    return 'Files';
+  }
+  try { return (nativeModule as any).getCategorizedSubfolder(mimeType, fileName); } catch { return 'Files'; }
+}
+
+export function getDestPathForFile(mimeType: string, fileName: string): string | null {
+  if (!nativeModule || typeof (nativeModule as any).getDestPathForFile !== 'function') return null;
+  try { return (nativeModule as any).getDestPathForFile(mimeType, fileName); } catch { return null; }
+}
+
+export async function shareFileToApp(fileUri: string, mimeType: string, packageName: string): Promise<boolean> {
+  if (!nativeModule || typeof (nativeModule as any).shareFileToApp !== 'function') {
+    throw new Error('shareFileToApp not available - rebuild dev-client');
+  }
+  return (nativeModule as any).shareFileToApp(fileUri, mimeType, packageName);
 }

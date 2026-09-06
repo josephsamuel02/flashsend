@@ -5,7 +5,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSelectionStore } from '../store/selectionStore';
-import { Colors, Spacing, FontSize, BorderRadius } from '../theme/colors';
+import { useColors, type ThemeColors, Spacing, FontSize, BorderRadius } from '../theme/colors';
 
 interface Props {
   onSelectAll: () => void;
@@ -14,6 +14,8 @@ interface Props {
 }
 
 export default function SelectionHeader({ onSelectAll, onClear, tabName }: Props) {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   const count = useSelectionStore((s) => Object.keys(s.selectedFiles).length);
   const countByTab = useSelectionStore((s) => Object.values(s.selectedFiles).filter((f) => f.tab === tabName).length);
   const totalSize = useSelectionStore((s) => Object.values(s.selectedFiles).reduce((acc, f) => acc + (f.size || 0), 0));
@@ -31,7 +33,7 @@ export default function SelectionHeader({ onSelectAll, onClear, tabName }: Props
   return (
     <View style={styles.container}>
       <TouchableOpacity onPress={onClear} style={styles.clearButton} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <MaterialIcons name="close" size={20} color={Colors.textPrimary} />
+        <MaterialIcons name="close" size={20} color={C.textPrimary} />
       </TouchableOpacity>
 
       <View style={{ flex: 1 }}>
@@ -42,47 +44,47 @@ export default function SelectionHeader({ onSelectAll, onClear, tabName }: Props
       </View>
 
       <TouchableOpacity onPress={onSelectAll} style={styles.selectAllButton}>
-        <MaterialIcons name="select-all" size={16} color={Colors.primary} />
+        <MaterialIcons name="select-all" size={16} color={C.primary} />
         <Text style={styles.selectAllText}>All</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (C: ThemeColors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: C.surfaceElevated,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.primary,
+    borderBottomColor: C.primary,
     gap: Spacing.sm,
   },
   clearButton: {
     padding: Spacing.xs,
   },
   countText: {
-    color: Colors.textPrimary,
+    color: C.textPrimary,
     fontWeight: '700',
     fontSize: FontSize.md,
   },
   sizeText: {
-    color: Colors.textMuted,
+    color: C.textMuted,
     fontSize: FontSize.xs,
     marginTop: 1,
   },
   selectAllButton: {
-    backgroundColor: Colors.primaryGlow,
+    backgroundColor: C.primaryGlow,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.round,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: C.primary,
   },
   selectAllText: {
-    color: Colors.primaryLight,
+    color: C.primaryLight,
     fontSize: FontSize.sm,
     fontWeight: '600',
   },

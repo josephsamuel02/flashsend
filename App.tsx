@@ -18,10 +18,13 @@ import {
 import { Outfit_700Bold, Outfit_800ExtraBold } from '@expo-google-fonts/outfit';
 
 import OnboardingScreen from './src/screens/OnboardingScreen';
+import StatusAccessScreen from './src/screens/StatusAccessScreen';
 import MainNavigator from './src/navigation/MainNavigator';
-import { Colors } from './src/theme/colors';
+import { hasStatusAccess } from './src/lib/statusAccess';
+import { useColors, type ThemeColors } from './src/theme/colors';
 import * as Updates from 'expo-updates';
 import SpInAppUpdates, { IAUUpdateKind } from 'sp-react-native-in-app-updates';
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -29,7 +32,9 @@ const Stack = createStackNavigator();
 const ONBOARDED_KEY = '@sendapp:onboarded';
 
 export default function App() {
+  const C = useColors();
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const [statusReady, setStatusReady] = useState<boolean | null>(null);
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -50,6 +55,10 @@ export default function App() {
     AsyncStorage.getItem(ONBOARDED_KEY).then((val) => {
       setOnboarded(val === 'true');
     });
+
+    hasStatusAccess()
+      .then((ok) => setStatusReady(ok))
+      .catch(() => setStatusReady(false));
 
     if (!__DEV__) {
       checkForUpdates();
@@ -90,29 +99,43 @@ export default function App() {
     setOnboarded(true);
   };
 
-  if (onboarded === null || (!fontsLoaded && !fontError)) {
-    return <View style={{ flex: 1, backgroundColor: Colors.background }} onLayout={onLayoutReady} />;
+  if (onboarded === null || statusReady === null || (!fontsLoaded && !fontError)) {
+    return <View style={{ flex: 1, backgroundColor: C.background }} onLayout={onLayoutReady} />;
   }
 
   if (!onboarded) {
     return (
-      <SafeAreaProvider>
-        <StatusBar barStyle="light-content" backgroundColor={Colors.primary} translucent={false} />
-        <OnboardingScreen onComplete={handleOnboardingComplete} />
-      </SafeAreaProvider>
+      <ErrorBoundary>
+        <SafeAreaProvider>
+          <StatusBar barStyle="light-content" backgroundColor={C.primary} translucent={false} />
+          <OnboardingScreen onComplete={handleOnboardingComplete} />
+        </SafeAreaProvider>
+      </ErrorBoundary>
+    );
+  }
+
+  if (!statusReady) {
+    return (
+      <ErrorBoundary>
+        <SafeAreaProvider>
+          <StatusAccessScreen onDone={() => setStatusReady(true)} />
+        </SafeAreaProvider>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <View style={{ flex: 1, backgroundColor: Colors.background }} onLayout={onLayoutReady}>
-        <StatusBar barStyle="light-content" backgroundColor={Colors.primary} translucent={false} />
-        <NavigationContainer>
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="Main" component={MainNavigator} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </View>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <View style={{ flex: 1, backgroundColor: C.background }} onLayout={onLayoutReady}>
+          <StatusBar barStyle="light-content" backgroundColor={C.primary} translucent={false} />
+          <NavigationContainer>
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Main" component={MainNavigator} />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </View>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

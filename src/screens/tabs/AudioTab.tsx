@@ -14,10 +14,12 @@ import {
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSelectionStore, SelectedFile } from '../../store/selectionStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import SelectionHeader from '../../components/SelectionHeader';
 import PermissionGate from '../../components/PermissionGate';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../theme/colors';
+import { useColors, type ThemeColors, Spacing, FontSize, BorderRadius } from '../../theme/colors';
 
 const PAGE_SIZE = 60;
 
@@ -29,6 +31,8 @@ function formatDuration(seconds: number): string {
 }
 
 export default function AudioTab() {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
@@ -78,7 +82,17 @@ export default function AudioTab() {
     }
   }, [permission?.granted, loadAssets]);
 
-  if (!permission) return <View style={styles.centered}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+  // Auto-refresh each time the tab gains focus (pull-to-refresh remains for manual)
+  useFocusEffect(
+    useCallback(() => {
+      if (permission?.granted && useSettingsStore.getState().autoRefresh) {
+        hasNextRef.current = true;
+        loadAssets(undefined, true);
+      }
+    }, [permission?.granted, loadAssets])
+  );
+
+  if (!permission) return <View style={styles.centered}><ActivityIndicator color={C.primary} size="large" /></View>;
   if (!permission.granted) {
     return (
       <PermissionGate
@@ -115,7 +129,7 @@ export default function AudioTab() {
           {selected ? (
             <MaterialIcons name="check" size={22} color="white" />
           ) : (
-            <MaterialIcons name="audiotrack" size={22} color={Colors.primary} />
+            <MaterialIcons name="audiotrack" size={22} color={C.primary} />
           )}
         </View>
         <View style={styles.info}>
@@ -127,9 +141,9 @@ export default function AudioTab() {
           </Text>
         </View>
         {selected ? (
-          <MaterialIcons name="check-circle" size={22} color={Colors.primary} />
+          <MaterialIcons name="check-circle" size={22} color={C.primary} />
         ) : (
-          <MaterialIcons name="chevron-right" size={20} color={Colors.textMuted} />
+          <MaterialIcons name="chevron-right" size={20} color={C.textMuted} />
         )}
       </TouchableOpacity>
     );
@@ -150,27 +164,27 @@ export default function AudioTab() {
         onEndReached={() => hasNextPage && !loadingRef.current && loadAssets(endCursor)}
         onEndReachedThreshold={0.4}
         windowSize={10}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { hasNextRef.current = true; loadAssets(undefined, true); }} colors={[Colors.primary]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { hasNextRef.current = true; loadAssets(undefined, true); }} colors={[C.primary]} />}
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
-              <MaterialIcons name="library-music" size={64} color={Colors.surfaceBorder} />
+              <MaterialIcons name="library-music" size={64} color={C.surfaceBorder} />
               <Text style={styles.emptyTitle}>No audio found</Text>
               <Text style={styles.emptySub}>Music and recordings will appear here.</Text>
             </View>
           ) : null
         }
         ListFooterComponent={
-          loading && assets.length > 0 ? <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} /> : null
+          loading && assets.length > 0 ? <ActivityIndicator color={C.primary} style={{ padding: 16 }} /> : null
         }
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
+const getStyles = (C: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.background },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.background },
   list: { paddingVertical: Spacing.xs },
   row: {
     flexDirection: 'row',
@@ -179,24 +193,24 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm + 4,
     gap: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceBorder,
-    backgroundColor: Colors.background,
+    borderBottomColor: C.surfaceBorder,
+    backgroundColor: C.background,
   },
-  rowSelected: { backgroundColor: Colors.primaryGlow },
+  rowSelected: { backgroundColor: C.primaryGlow },
   iconBox: {
     width: 46,
     height: 46,
     borderRadius: BorderRadius.md,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: C.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+    borderColor: C.surfaceBorder,
   },
-  iconBoxSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  iconBoxSelected: { backgroundColor: C.primary, borderColor: C.primary },
   info: { flex: 1 },
-  fileName: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '600' },
-  meta: { color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: 2 },
+  fileName: { color: C.textPrimary, fontSize: FontSize.md, fontWeight: '600' },
+  meta: { color: C.textSecondary, fontSize: FontSize.sm, marginTop: 2 },
   empty: {
     flex: 1,
     alignItems: 'center',
@@ -205,6 +219,6 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginTop: 40,
   },
-  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.textSecondary },
-  emptySub: { fontSize: FontSize.md, color: Colors.textMuted, textAlign: 'center' },
+  emptyTitle: { fontSize: FontSize.xl, fontWeight: '700', color: C.textSecondary },
+  emptySub: { fontSize: FontSize.md, color: C.textMuted, textAlign: 'center' },
 });

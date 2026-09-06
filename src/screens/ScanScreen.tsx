@@ -22,7 +22,7 @@ import { useTransferStore } from '../store/transferStore';
 import { fetchManifest } from '../networking/client';
 import { startServer, generateToken, DEFAULT_PORT } from '../networking/server';
 import { getLocalIPAddress } from '../networking/networkInfo';
-import { Colors, Spacing, FontSize, BorderRadius } from '../theme/colors';
+import { useColors, type ThemeColors, Spacing, FontSize, BorderRadius } from '../theme/colors';
 
 async function requestWifiPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
@@ -43,6 +43,8 @@ async function requestWifiPermissions(): Promise<boolean> {
 }
 
 export default function ScanScreen() {
+  const C = useColors();
+  const styles = React.useMemo(() => getStyles(C), [C]);
   const navigation = useNavigation<any>();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -125,54 +127,50 @@ export default function ScanScreen() {
       if (hasHotspotCreds) {
         const wifiPermOk = await requestWifiPermissions();
         if (!wifiPermOk) {
-          throw new Error('WiFi permission denied. Enable Nearby Devices / Location and retry.');
+          throw new Error('Permission denied. Enable in Settings');
         }
 
-        setWifiStatus(`Joining "${payload.ssid}"…`);
+        setWifiStatus(`Joining ${payload.ssid}...`);
         try {
           await (WifiManager as any).connectToProtectedWifiSSID({
             ssid: payload.ssid,
             password: payload.password,
             isWEP: false,
             isHidden: false,
-            timeout: 15,
+            timeout: 18,
           });
         } catch (e: any) {
-          console.warn('[Scan] connectToProtected threw', e?.message);
-          // Continue to polling; some devices throw even on success
+          console.warn('[Scan] connect threw:', e?.message);
         }
 
-        setWifiStatus(`Confirming "${payload.ssid}"…`);
-        const landed = await pollForSSID(payload.ssid, 9000, 500);
+        setWifiStatus('Connecting...');
+        const landed = await pollForSSID(payload.ssid, 12000, 600);
         if (!landed) {
-          throw new Error(
-            `Could not auto-join "${payload.ssid}". Open Settings → WiFi, connect to "${payload.ssid}" (password is hidden in QR), then tap Retry.`
-          );
+          throw new Error(`Could not join ${payload.ssid}. Connect manually in WiFi settings`);
         }
-        setWifiStatus(`Connected to ${payload.ssid} — fetching files…`);
-        await new Promise((r) => setTimeout(r, 900));
+        
+        setWifiStatus('Fetching files...');
+        await new Promise((r) => setTimeout(r, 1000));
 
-        // Try fetch manifest, with scoped-network workaround
+        let manifest;
         try {
-          const manifest = await fetchManifest(peer);
-          await completeConnection(payload, manifest);
-          return;
+          manifest = await fetchManifest(peer, 10000);
         } catch (fetchErr: any) {
-          console.warn('[Scan] manifest after join failed, trying forceWifiUsage', fetchErr?.message);
+          console.warn('[Scan] Manifest failed:', fetchErr?.message);
           try {
             await (WifiManager as any).forceWifiUsageWithOptions?.(true, { noInternet: true });
-            const manifestRetry = await fetchManifest(peer);
-            await completeConnection(payload, manifestRetry);
-            return;
+            await new Promise(r => setTimeout(r, 500));
+            manifest = await fetchManifest(peer, 10000);
           } catch (e2: any) {
-            throw new Error(
-              `${fetchErr?.message || 'Fetch failed'} — joined hotspot but cannot reach sender. Try: disable Mobile Data, ensure hotspot still on, and retry.`
-            );
+            throw new Error('Cannot reach sender. Disable mobile data and retry');
           }
         }
+        
+        await completeConnection(payload, manifest);
+        return;
       } else {
-        setWifiStatus('Both devices must be on the same WiFi — connecting…');
-        const manifest = await fetchManifest(peer);
+        setWifiStatus('Connecting...');
+        const manifest = await fetchManifest(peer, 8000);
         await completeConnection(payload, manifest);
       }
     } catch (err: any) {
@@ -188,7 +186,7 @@ export default function ScanScreen() {
   if (!permission) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+        <ActivityIndicator color={C.primary} size="large" />
       </View>
     );
   }
@@ -199,16 +197,14 @@ export default function ScanScreen() {
         <View style={styles.permIcon}>
           <MaterialIcons name="camera-alt" size={36} color="white" />
         </View>
-        <Text style={styles.permTitle}>Camera access needed</Text>
-        <Text style={styles.permSub}>
-          We use the camera only to scan the sender's QR code. No photos are taken.
-        </Text>
-        <TouchableOpacity style={styles.grantButton} onPress={requestPermission} activeOpacity={0.85}>
+        <Text style={styles.permTitle}>Camera Permission</Text>
+        <Text style={styles.permSub}>Required to scan QR codes</Text>
+        <TouchableOpacity style={styles.grantButton} onPress={requestPermission}>
           <MaterialIcons name="camera-alt" size={18} color="white" />
-          <Text style={styles.grantButtonText}>Grant Camera</Text>
+          <Text style={styles.grantButtonText}>Grant</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => Linking.openSettings()} style={styles.settingsLink}>
-          <Text style={styles.settingsLinkText}>Open Settings</Text>
+          <Text style={styles.settingsLinkText}>Settings</Text>
         </TouchableOpacity>
       </View>
     );
@@ -236,55 +232,38 @@ export default function ScanScreen() {
             <View style={[styles.corner, styles.topRight]} />
             <View style={[styles.corner, styles.bottomLeft]} />
             <View style={[styles.corner, styles.bottomRight]} />
-            <View style={styles.scanLine} />
+            {!scanned && <View style={styles.scanLine} />}
           </View>
-          <Text style={styles.viewfinderLabel}>Align QR within the frame</Text>
+          <Text style={styles.viewfinderLabel}>Align QR code</Text>
         </View>
       </CameraView>
 
       <View style={styles.statusBar}>
         {connecting ? (
           <View style={styles.statusRow}>
-            <ActivityIndicator color={Colors.primary} size="small" />
-            <Text style={styles.statusText}>{wifiStatus || 'Connecting…'}</Text>
+            <ActivityIndicator color={C.primary} size="small" />
+            <Text style={styles.statusText}>{wifiStatus || 'Connecting...'}</Text>
           </View>
         ) : error ? (
           <View style={styles.errorBox}>
-            <View style={styles.errorHeader}>
-              <MaterialIcons name="error-outline" size={20} color={Colors.error} />
-              <Text style={styles.errorTitle}>Could not connect</Text>
-            </View>
-            <Text style={styles.errorText}>{error}</Text>
+            <MaterialIcons name="error-outline" size={20} color={C.error} />
+            <Text style={styles.errorText}>{error.split('\n')[0]}</Text>
             <View style={styles.errorActions}>
-              <TouchableOpacity
-                onPress={() => {
-                  setScanned(false);
-                  setError(null);
-                  setWifiStatus(null);
-                }}
-                style={styles.retryBtn}
-              >
+              <TouchableOpacity onPress={() => { setScanned(false); setError(null); }} style={styles.retryBtn}>
                 <MaterialIcons name="qr-code-scanner" size={18} color="white" />
                 <Text style={styles.retryText}>Scan Again</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => Linking.openSettings()} style={styles.settingsBtn}>
-                <Text style={styles.settingsBtnText}>WiFi Settings</Text>
+                <Text style={styles.settingsBtnText}>Settings</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
           <View style={styles.statusRow}>
             <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Point camera at sender's QR code</Text>
+            <Text style={styles.statusText}>Point camera at QR code</Text>
           </View>
         )}
-      </View>
-
-      <View style={styles.tip}>
-        <MaterialIcons name="tips-and-updates" size={18} color={Colors.primary} />
-        <Text style={styles.tipText}>
-          <Text style={{ fontWeight: '700' }}>Sender on Android?</Text> You'll auto-join its hotspot. If both on same WiFi, just scan — no hotspot needed.
-        </Text>
       </View>
     </View>
   );
@@ -293,16 +272,16 @@ export default function ScanScreen() {
 const CORNER_SIZE = 28;
 const CORNER_WIDTH = 4;
 
-const styles = StyleSheet.create({
+const getStyles = (C: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: Colors.background },
-  permIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
-  permTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.textPrimary, textAlign: 'center' },
-  permSub: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, maxWidth: 300 },
-  grantButton: { flexDirection: 'row', gap: 8, backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: BorderRadius.round, alignItems: 'center', marginTop: 8 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: C.background },
+  permIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  permTitle: { fontSize: FontSize.xl, fontWeight: '700', color: C.textPrimary, textAlign: 'center' },
+  permSub: { fontSize: FontSize.md, color: C.textSecondary, textAlign: 'center', lineHeight: 22, maxWidth: 300 },
+  grantButton: { flexDirection: 'row', gap: 8, backgroundColor: C.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: BorderRadius.round, alignItems: 'center', marginTop: 8 },
   grantButtonText: { color: 'white', fontWeight: '700', fontSize: FontSize.md },
   settingsLink: { padding: 8 },
-  settingsLinkText: { color: Colors.primary, fontWeight: '600', fontSize: 14 },
+  settingsLinkText: { color: C.primary, fontWeight: '600', fontSize: 14 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -334,31 +313,27 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     height: 2,
-    backgroundColor: Colors.primary,
+    backgroundColor: C.primary,
     opacity: 0.9,
     top: '50%',
-    shadowColor: Colors.primary,
+    shadowColor: C.primary,
     shadowOpacity: 0.8,
     shadowRadius: 4,
   },
-  corner: { position: 'absolute', width: CORNER_SIZE, height: CORNER_SIZE, borderColor: Colors.primary },
+  corner: { position: 'absolute', width: CORNER_SIZE, height: CORNER_SIZE, borderColor: C.primary },
   topLeft: { top: 0, left: 0, borderTopWidth: CORNER_WIDTH, borderLeftWidth: CORNER_WIDTH, borderTopLeftRadius: 12 },
   topRight: { top: 0, right: 0, borderTopWidth: CORNER_WIDTH, borderRightWidth: CORNER_WIDTH, borderTopRightRadius: 12 },
   bottomLeft: { bottom: 0, left: 0, borderBottomWidth: CORNER_WIDTH, borderLeftWidth: CORNER_WIDTH, borderBottomLeftRadius: 12 },
   bottomRight: { bottom: 0, right: 0, borderBottomWidth: CORNER_WIDTH, borderRightWidth: CORNER_WIDTH, borderBottomRightRadius: 12 },
-  statusBar: { backgroundColor: Colors.background, padding: Spacing.md, minHeight: 72, justifyContent: 'center', borderTopWidth: 1, borderTopColor: Colors.surfaceBorder },
+  statusBar: { backgroundColor: C.background, padding: Spacing.md, minHeight: 72, justifyContent: 'center', borderTopWidth: 1, borderTopColor: C.surfaceBorder },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.success },
-  statusText: { color: Colors.textSecondary, fontSize: FontSize.sm, flex: 1, fontWeight: '600' },
+  statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.success },
+  statusText: { color: C.textSecondary, fontSize: FontSize.sm, flex: 1, fontWeight: '600' },
   errorBox: { gap: Spacing.sm },
-  errorHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  errorTitle: { color: Colors.error, fontWeight: '700', fontSize: FontSize.md },
-  errorText: { color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 18 },
+  errorText: { color: C.error, fontSize: FontSize.sm, flex: 1 },
   errorActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: 4 },
-  retryBtn: { flexDirection: 'row', gap: 6, backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: BorderRadius.round, alignItems: 'center' },
+  retryBtn: { flexDirection: 'row', gap: 6, backgroundColor: C.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: BorderRadius.round, alignItems: 'center' },
   retryText: { color: 'white', fontWeight: '700', fontSize: 13 },
-  settingsBtn: { backgroundColor: Colors.surfaceElevated, paddingHorizontal: 16, paddingVertical: 10, borderRadius: BorderRadius.round, borderWidth: 1, borderColor: Colors.surfaceBorder, justifyContent: 'center' },
-  settingsBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
-  tip: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, backgroundColor: Colors.surface, padding: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.surfaceBorder },
-  tipText: { flex: 1, color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
+  settingsBtn: { backgroundColor: C.surfaceElevated, paddingHorizontal: 16, paddingVertical: 10, borderRadius: BorderRadius.round, borderWidth: 1, borderColor: C.surfaceBorder, justifyContent: 'center' },
+  settingsBtnText: { color: C.textSecondary, fontWeight: '600', fontSize: 13 },
 });
