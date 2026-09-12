@@ -5,13 +5,32 @@ import * as Network from 'expo-network';
 import { Platform } from 'react-native';
 
 // Common hotspot gateway IPs on Android
-const HOTSPOT_FALLBACK_IPS = [
+export const HOTSPOT_FALLBACK_IPS = [
   '192.168.43.1',   // Default LocalOnlyHotspot gateway (most devices)
   '192.168.49.1',   // Some Samsung/OEM variant
   '192.168.137.1',  // Windows ICS/host variant fallback
   '192.168.0.1',
   '10.0.0.1',
 ];
+
+/**
+ * Build an ordered list of IPs to try when connecting to a sender.
+ * QR-advertised IP first, then known hotspot gateways (deduped).
+ */
+export function getCandidateHostIPs(advertisedIP: string | null | undefined): string[] {
+  const out: string[] = [];
+  const push = (ip?: string | null) => {
+    if (!ip || typeof ip !== 'string') return;
+    const trimmed = ip.trim();
+    if (!trimmed || out.includes(trimmed)) return;
+    // Skip obviously-invalid values, but keep anything IPv4-looking
+    if (trimmed === '0.0.0.0' || trimmed === '127.0.0.1') return;
+    out.push(trimmed);
+  };
+  push(advertisedIP);
+  for (const fb of HOTSPOT_FALLBACK_IPS) push(fb);
+  return out;
+}
 
 function isValidIP(ip: string | null | undefined): boolean {
   if (!ip) return false;

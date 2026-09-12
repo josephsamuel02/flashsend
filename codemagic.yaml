@@ -1,0 +1,51 @@
+# Flash Send — Android APK (Expo prebuild + Gradle, no EAS needed)
+workflows:
+  android-apk:
+    name: Flash Send Android APK
+    max_build_duration: 60
+
+    environment:
+      node: 20
+      java: 17
+      vars:
+        PACKAGE_NAME: "com.flashsend.app"
+
+    cache:
+      cache_paths:
+        - $CM_BUILD_DIR/node_modules
+        - ~/.gradle/wrapper
+        - ~/.gradle/caches
+
+    scripts:
+      - name: Versions check
+        script: |
+          node -v
+          npm -v
+          java -version
+          npx expo --version
+
+      - name: Install dependencies
+        script: |
+          npm ci
+
+      - name: Expo prebuild (regenerate android/)
+        script: |
+          npx expo prebuild --platform android --clean --non-interactive
+
+      - name: Set Android SDK location
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+
+      - name: Build release APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --parallel --max-workers=2
+
+      - name: List outputs
+        script: |
+          find android/app/build/outputs -name "*.apk" -o -name "output-metadata.json" | head -20
+
+    artifacts:
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/output-metadata.json

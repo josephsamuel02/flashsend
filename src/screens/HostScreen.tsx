@@ -23,7 +23,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useSelectionStore } from '../store/selectionStore';
 import { useTransferStore } from '../store/transferStore';
 import { generateToken, startServer, stopServer, DEFAULT_PORT } from '../networking/server';
-import { getLocalIPAddress, getBestHostIP, isOnWiFi } from '../networking/networkInfo';
+import { getLocalIPAddress, getBestHostIP, isOnWiFi, isHotspotIP } from '../networking/networkInfo';
 import { useColors, type ThemeColors, Spacing, FontSize, BorderRadius } from '../theme/colors';
 import { startHotspot, stopHotspot, isHotspotSupported } from 'flash-send-hotspot';
 // eslint-disable-next-line import/no-unresolved
@@ -42,12 +42,13 @@ function formatBytes(bytes: number): string {
 async function requestHotspotPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
   try {
+    // LocalOnlyHotspot + wifi-reborn both require ACCESS_FINE_LOCATION on ALL
+    // API levels (plus Location services ON). NEARBY_WIFI_DEVICES is extra
+    // on API 33+. Requesting only NEARBY on 33+ causes PERMISSION_DENIED.
     const apiLevel = Platform.Version as number;
-    const perms: any[] = [];
+    const perms: any[] = [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
     if (apiLevel >= 33) {
       perms.push(PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES as string);
-    } else {
-      perms.push(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
     }
     if (perms.length === 0) return true;
     const results = await PermissionsAndroid.requestMultiple(perms as any);
@@ -108,9 +109,12 @@ export default function HostScreen() {
       const permOk = await requestHotspotPermissions();
       if (!permOk) {
         const apiLevel = Platform.Version as number;
-        const permName = apiLevel >= 33 ? 'Nearby Devices' : 'Location';
+        const permName =
+          apiLevel >= 33
+            ? 'Location + Nearby Devices (and turn Location services ON)'
+            : 'Location (and turn Location services ON)';
         setHotspotError(
-          `${permName} permission is required to create hotspot. Please enable "${permName}" permission in Settings → Apps → Flash Send → Permissions.`
+          `${permName} permission is required to create hotspot. Please enable it in Settings → Apps → Flash Send → Permissions, with Location services ON.`
         );
         setHotspotLoading(false);
       } else {
@@ -165,10 +169,19 @@ export default function HostScreen() {
     }
     
     let ip = await getLocalIPAddress();
-    
-    // For hotspot scenarios, ensure we use the correct gateway IP
-    if (hotspotCreds && (ip === '0.0.0.0' || ip === '127.0.0.1' || !ip)) {
-      ip = '192.168.43.1'; // Default LocalOnlyHotspot gateway
+
+    // When a LocalOnlyHotspot is active, the host IS the gateway
+    // (usually 192.168.43.1). expo-network often still returns the OLD WiFi
+    // IP here, which is unreachable once the receiver joins the hotspot —
+    // so the QR would contain a dead IP and scan→connect always fails.
+    // Prefer the hotspot gateway whenever a hotspot was created.
+    if (hotspotCreds) {
+      if (!isHotspotIP(ip)) {
+        console.log(`[Host] Hotspot active, overriding expo-network IP ${ip} with gateway 192.168.43.1`);
+        ip = '192.168.43.1';
+      }
+    } else if (!ip || ip === '0.0.0.0' || ip === '127.0.0.1') {
+      ip = '192.168.43.1';
     }
     
     setLocalIP(ip);
@@ -272,12 +285,24 @@ export default function HostScreen() {
 
     try {
       await startServer(sessionToken, manifestEntries, (id) => fileMap[id]);
-      // After server start, try to get better IP by probing self
+      // After server start, try to confirm the advertised IP is reachable.
+      // When hosting a hotspot, only accept hotspot-range IPs — never switch
+      // back to a stale regular-WiFi IP or the QR becomes unscannable.
       const best = await getBestHostIP(DEFAULT_PORT, sessionToken);
       if (best && best !== ip && best !== '0.0.0.0') {
-        console.log('[Host] Updated IP from probe:', best);
-        setLocalIP(best);
-        setSession({ token: sessionToken, localIP: best, port: DEFAULT_PORT });
+        if (hotspotCreds) {
+          if (isHotspotIP(best)) {
+            console.log('[Host] Updated IP from probe:', best);
+            setLocalIP(best);
+            setSession({ token: sessionToken, localIP: best, port: DEFAULT_PORT });
+          } else {
+            console.log(`[Host] Ignoring non-hotspot probe result ${best}, keeping gateway ${ip}`);
+          }
+        } else {
+          console.log('[Host] Updated IP from probe:', best);
+          setLocalIP(best);
+          setSession({ token: sessionToken, localIP: best, port: DEFAULT_PORT });
+        }
       }
     } catch (e: any) {
       console.error('[Host] startServer failed:', e);

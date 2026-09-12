@@ -1,7 +1,7 @@
 // plugins/withHotspotPermissions.js
-// Ensures hotspot permissions have correct flags per Phase 2 spec:
-// - NEARBY_WIFI_DEVICES with neverForLocation
-// - ACCESS_FINE_LOCATION maxSdkVersion 32
+// Ensures hotspot/wifi permissions:
+// - NEARBY_WIFI_DEVICES with neverForLocation (hotspot creation, API 33+)
+// - ACCESS_FINE_LOCATION uncapped (required by wifi-reborn join on ALL SDKs)
 const { withAndroidManifest } = require('@expo/config-plugins');
 
 module.exports = (config) => {
@@ -33,19 +33,27 @@ module.exports = (config) => {
       nearby.$['android:usesPermissionFlags'] = 'neverForLocation';
     }
 
-    // ACCESS_FINE_LOCATION with maxSdkVersion 32
+    // ACCESS_FINE_LOCATION: required by react-native-wifi-reborn on ALL SDKs
+    // (its native PermissionUtils checks FINE_LOCATION + Location services ON,
+    // even on Android 13+). Do NOT cap with maxSdkVersion — the old cap broke
+    // scan+join on API 33+ because the permission could never be granted.
     let fineLoc = findPerm('android.permission.ACCESS_FINE_LOCATION');
     if (!fineLoc) {
       perms.push({
         $: {
           'android:name': 'android.permission.ACCESS_FINE_LOCATION',
-          'android:maxSdkVersion': '32',
         },
       });
-    } else {
-      fineLoc.$['android:maxSdkVersion'] = '32';
-      // Ensure we don't have usesPermissionFlags on this one
+    } else if (fineLoc.$) {
+      // Remove any stale maxSdkVersion cap from previous builds
+      delete fineLoc.$['android:maxSdkVersion'];
     }
+
+    // Network-state permissions needed by wifi-reborn's requestNetwork /
+    // forceWifiUsage (bindProcessToNetwork) for no-internet hotspots.
+    ['android.permission.ACCESS_NETWORK_STATE', 'android.permission.CHANGE_NETWORK_STATE'].forEach((name) => {
+      if (!findPerm(name)) perms.push({ $: { 'android:name': name } });
+    });
 
     // usesCleartextTraffic for local HTTP (android:usesCleartextTraffic="true" on <application>)
     // Expo schema doesn't support this directly, so inject via config plugin

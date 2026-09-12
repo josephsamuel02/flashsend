@@ -9,6 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { useTransferStore } from '../store/transferStore';
 import type { FileManifestEntry, ServerManifestResponse } from './server';
+import { getCandidateHostIPs } from './networkInfo';
 import * as SendappNative from 'sendapp-native';
 import { Buffer } from 'buffer';
 
@@ -90,6 +91,78 @@ export async function fetchManifest(peer: PeerConnection, timeoutMs = MANIFEST_T
   // All attempts failed
   const finalError = lastErr?.message || 'Failed to fetch manifest';
   throw new Error(`Could not connect to sender after 2 attempts: ${finalError}. Ensure both devices are connected to the same network.`);
+}
+
+/**
+ * Try the QR-advertised IP first (full retry), then known hotspot gateways
+ * with a single fast attempt each. Returns the manifest plus the IP that
+ * actually worked, so the caller can store the reachable peer address (QR IP
+ * is often stale when the sender created a LocalOnlyHotspot after measuring
+ * its old WiFi IP).
+ *
+ * Total worst-case ≈ 2×timeoutQR + N×timeoutFallback (≈10s + 4×3.5s = ~24s),
+ * down from ~80s when every IP got 2×8s attempts. onAttempt lets the UI show
+ * "Trying 192.168.43.1… (2/5)" instead of a stuck spinner.
+ */
+export async function fetchManifestWithFallbacks(
+  peer: PeerConnection,
+  timeoutMsPerIP = 5000,
+  onAttempt?: (ip: string, index: number, total: number) => void
+): Promise<{ manifest: ServerManifestResponse; workingIP: string }> {
+  const candidates = getCandidateHostIPs(peer.ip);
+  let lastErr: any = null;
+
+  const fetchSingle = async (ip: string, timeoutMs: number): Promise<ServerManifestResponse> => {
+    const url = `http://${ip}:${peer.port}/manifest`;
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'GET',
+        headers: {
+          'x-session-token': peer.token,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+      },
+      timeoutMs
+    );
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Server returned ${response.status}${text ? ': ' + text.slice(0, 100) : ''}`);
+    }
+    const data = (await response.json()) as ServerManifestResponse;
+    if (!data || !Array.isArray(data.files)) {
+      throw new Error('Invalid manifest format: missing files array');
+    }
+    return data;
+  };
+
+  for (let i = 0; i < candidates.length; i++) {
+    const ip = candidates[i];
+    try {
+      onAttempt?.(ip, i + 1, candidates.length);
+      let manifest: ServerManifestResponse;
+      if (i === 0) {
+        // QR-advertised IP gets the full 2-attempt retry (DHCP may still settle)
+        manifest = await fetchManifest({ ...peer, ip }, timeoutMsPerIP);
+      } else {
+        // Fallbacks get one fast attempt each — keeps total time bounded
+        manifest = await fetchSingle(ip, 3500);
+      }
+      if (ip !== peer.ip) {
+        console.log(`[Client] Manifest succeeded via fallback IP ${ip} (QR had ${peer.ip})`);
+      }
+      return { manifest, workingIP: ip };
+    } catch (err: any) {
+      lastErr = err;
+      console.warn(`[Client] Manifest via ${ip} failed:`, err?.message || err);
+    }
+  }
+  throw new Error(
+    `Could not reach sender at ${peer.ip} (tried: ${candidates.join(', ')}). ` +
+      `Last error: ${lastErr?.message || 'unknown'}. ` +
+      `Make sure you joined the sender hotspot, WiFi is on, Location is ON, and mobile data is off.`
+  );
 }
 
 // ── Categorization helpers — FlashSend/Images, Videos, Apps, Documents, Audio, Files ──
