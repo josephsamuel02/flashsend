@@ -1,12 +1,12 @@
 // src/components/StatusAccessButton.tsx
-// Single "Get WhatsApp Status" button. Opens the system All-files-access page
-// (storage permission), then reloads the status list.
+// Single "Get WhatsApp Status" button. Asks for media (storage) access first;
+// falls back to the system All-files-access page when media access is denied.
 
 import React, { useState } from 'react';
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useColors, type ThemeColors, FontFamily, BorderRadius } from '../theme/colors';
-import { openAllFilesAccessSettings } from '../lib/statusAccess';
+import { openAllFilesAccessSettings, requestStatusMediaAccess } from '../lib/statusAccess';
 
 export default function StatusAccessButton({ onDone }: { onDone?: () => void }) {
   const C = useColors();
@@ -17,7 +17,11 @@ export default function StatusAccessButton({ onDone }: { onDone?: () => void }) 
     if (busy) return;
     setBusy(true);
     try {
-      await openAllFilesAccessSettings();
+      const granted = await requestStatusMediaAccess();
+      if (!granted) {
+        // Media denied — offer the All-files-access page as fallback.
+        await openAllFilesAccessSettings();
+      }
     } finally {
       setBusy(false);
       onDone?.();

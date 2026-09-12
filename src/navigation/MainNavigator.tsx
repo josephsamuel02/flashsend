@@ -7,6 +7,8 @@ import { createMaterialTopTabNavigator } from '@react-navigation/material-top-ta
 import { useNavigation } from '@react-navigation/native';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { createStackNavigator } from '@react-navigation/stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as MediaLibrary from 'expo-media-library';
 
 import AppsTab from '../screens/tabs/AppsTab';
 import PhotosTab from '../screens/tabs/PhotosTab';
@@ -78,6 +80,16 @@ function TabNavigator() {
 
   useEffect(() => {
     loadSettings();
+    // First app open: prompt once for all media access (photos, videos, audio)
+    // so Photos/Videos/Audio/Status tabs work without per-tab surprises.
+    AsyncStorage.getItem('@sendapp:mediaPrompted')
+      .then((v) => {
+        if (v !== null) return;
+        return MediaLibrary.requestPermissionsAsync()
+          .catch(() => {})
+          .then(() => AsyncStorage.setItem('@sendapp:mediaPrompted', 'true').catch(() => {}));
+      })
+      .catch(() => {});
   }, [loadSettings]);
 
   const handleSendPress = async () => {

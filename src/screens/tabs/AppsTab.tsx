@@ -37,7 +37,7 @@ interface AppWithSelection extends InstalledApp {
 }
 
 const { width } = Dimensions.get('window');
-const NUM_COLUMNS = 3;
+const NUM_COLUMNS = 4;
 const H_GAP = 4;
 const CONTAINER_PAD = 6;
 const ITEM_WIDTH = (width - CONTAINER_PAD * 2 - H_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
@@ -176,12 +176,12 @@ export default function AppsTab() {
             />
           ) : (
             <View style={styles.fallbackIcon}>
-              <MaterialIcons name="apps" size={28} color={C.primary} />
+              <MaterialIcons name="apps" size={24} color={C.primary} />
             </View>
           )}
           {selected && (
             <View style={styles.checkBadge}>
-              <MaterialIcons name="check" size={14} color="white" />
+              <MaterialIcons name="check" size={12} color="white" />
             </View>
           )}
         </View>
@@ -213,12 +213,12 @@ export default function AppsTab() {
             <Image source={{ uri: `data:image/png;base64,${item.iconBase64}` }} style={styles.appIcon} resizeMode="cover" />
           ) : (
             <View style={styles.fallbackIcon}>
-              <MaterialIcons name="apps" size={28} color={C.primary} />
+              <MaterialIcons name="apps" size={24} color={C.primary} />
             </View>
           )}
           {selected && (
             <View style={styles.checkBadge}>
-              <MaterialIcons name="check" size={14} color="white" />
+              <MaterialIcons name="check" size={12} color="white" />
             </View>
           )}
         </View>
@@ -287,9 +287,9 @@ export default function AppsTab() {
         columnWrapperStyle={filteredUserApps.length > 1 ? styles.columnWrapper : undefined}
         contentContainerStyle={[styles.grid, { paddingBottom: Math.max(insets.bottom, 16) + 108 }]}
         showsVerticalScrollIndicator={false}
-        initialNumToRender={21}
+        initialNumToRender={24}
         windowSize={7}
-        maxToRenderPerBatch={21}
+        maxToRenderPerBatch={24}
         removeClippedSubviews
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => loadInstalledApps(true)} colors={[C.primary]} />
@@ -467,18 +467,18 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
   },
   gridItemSelected: { backgroundColor: 'transparent', borderColor: 'transparent', opacity: 0.9 },
   iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     backgroundColor: C.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  appIcon: { width: 56, height: 56, borderRadius: 14 },
+  appIcon: { width: 46, height: 46, borderRadius: 12 },
   fallbackIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     backgroundColor: C.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
@@ -487,9 +487,9 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
     position: 'absolute',
     top: -6,
     right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: C.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -498,12 +498,12 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
     elevation: 2,
   },
   appNameGrid: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: FontFamily.medium,
     color: C.textPrimary,
     textAlign: 'center',
-    lineHeight: 15,
-    minHeight: 30,
+    lineHeight: 14,
+    minHeight: 28,
   },
   apkSize: { fontSize: 10, color: C.textMuted, fontFamily: FontFamily.regular },
   // System section below first grid - same standalone UI

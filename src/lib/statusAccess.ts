@@ -58,6 +58,26 @@ function isIgnored(name: string): boolean {
 
 // ─── Access checks ────────────────────────────────────────────────────────────
 
+export async function hasMediaAccess(): Promise<boolean> {
+  try {
+    const p = await MediaLibrary.getPermissionsAsync();
+    return !!p.granted;
+  } catch {
+    return false;
+  }
+}
+
+// Media permission prompt used by the Status "Get WhatsApp Status" button and
+// the first-open prompt. Requests read access to images/video/audio.
+export async function requestStatusMediaAccess(): Promise<boolean> {
+  try {
+    const p = await MediaLibrary.requestPermissionsAsync();
+    return !!p.granted;
+  } catch {
+    return false;
+  }
+}
+
 async function probeDirectAccess(): Promise<boolean> {
   const candidates = [...WA_PATHS, ...BUSINESS_PATHS];
   for (const p of candidates) {
@@ -106,6 +126,10 @@ export async function hasSAFAccess(): Promise<boolean> {
 
 export async function hasStatusAccess(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
+  // Media access is the primary path (Play-safe, no all-files needed).
+  try {
+    if (await hasMediaAccess()) return true;
+  } catch {}
   try {
     if (await hasAllFilesAccess()) return true;
   } catch {}
@@ -213,6 +237,56 @@ export async function listStatusFiles(opts: {
     seen.add(key);
     all.push(f);
   };
+
+  // Media-library scan (primary, Play-safe path): query recent photos/videos
+  // and keep files living under a WhatsApp .Statuses folder.
+  if (await hasMediaAccess().catch(() => false)) {
+    try {
+      const res = await MediaLibrary.getAssetsAsync({
+        mediaType: ['photo', 'video'],
+        first: 1000,
+        sortBy: [['creationTime', false]],
+      });
+      for (const a of res.assets || []) {
+        try {
+          const uriLower = (a.uri || '').toLowerCase();
+          if (!uriLower.includes('.statuses')) continue;
+          const kind = a.mediaType === 'video' ? 'video' : 'image';
+          if (kind === 'image' && !IMAGE_EXT.has(extOf(a.filename))) {
+            // Trust MediaStore kind for odd extensions, keep if image-like
+            if (!/jpe?g|png|webp|gif|bmp|heic/i.test(a.filename)) continue;
+          }
+          const decoded = (() => {
+            try {
+              return decodeURIComponent(a.uri);
+            } catch {
+              return a.uri;
+            }
+          })();
+          const source: 'wa' | 'business' = /w4b|business/i.test(decoded) ? 'business' : 'wa';
+          if ((source === 'wa' && !opts.wa) || (source === 'business' && !opts.business)) continue;
+          push({
+            id: a.id,
+            uri: a.uri,
+            name: a.filename,
+            size: 0,
+            mimeType: kind === 'image' ? 'image/*' : 'video/*',
+            mtime: a.creationTime ?? null,
+            source,
+            isSAF: false,
+          });
+        } catch {
+          continue;
+        }
+      }
+      if (all.length > 0) {
+        all.sort((a, b) => (b.mtime ?? -1) - (a.mtime ?? -1));
+        return all;
+      }
+      // MediaStore returned nothing under .Statuses (hidden/.nomedia on some
+      // devices) — fall through to direct/SAF scanning below.
+    } catch {}
+  }
 
   // Direct scan (needs all-files access).
   if (await hasAllFilesAccess().catch(() => false)) {
