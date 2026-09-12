@@ -54,8 +54,8 @@ export default function VideosTab() {
   const hasNextRef = useRef(true);
 
   const selectedFiles = useSelectionStore((s) => s.selectedFiles);
+  const selectionMode = useSelectionStore((s) => s.selectionMode);
   const toggleFile = useSelectionStore((s) => s.toggleFile);
-  const selectAll = useSelectionStore((s) => s.selectAll);
   const clearSelection = useSelectionStore((s) => s.clearSelection);
 
   const loadAssets = useCallback(async (cursor?: string, isRefresh = false) => {
@@ -128,7 +128,6 @@ export default function VideosTab() {
   });
 
   const handleToggle = (a: MediaLibrary.Asset) => toggleFile(toSelected(a));
-  const handleSelectAll = () => selectAll(assets.map(toSelected));
 
   const openViewer = useCallback(
     (asset: MediaLibrary.Asset) => {
@@ -154,12 +153,12 @@ export default function VideosTab() {
     return (
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={() => openViewer(item)}
+        onPress={() => (selectionMode ? handleToggle(item) : openViewer(item))}
         onLongPress={() => handleToggle(item)}
         delayLongPress={350}
         style={[styles.cell, selected && styles.cellSelected]}
       >
-        <Image source={{ uri: item.uri }} style={styles.thumbnail} />
+        <Image source={{ uri: item.uri }} style={styles.thumbnail} fadeDuration={0} />
         <View style={styles.gradient} />
         <View style={styles.durationBadge}>
           <MaterialIcons name="play-arrow" size={12} color="white" />
@@ -182,7 +181,7 @@ export default function VideosTab() {
 
   return (
     <View style={styles.container}>
-      <SelectionHeader tabName="Videos" onSelectAll={handleSelectAll} onClear={clearSelection} />
+      <SelectionHeader tabName="Videos" onClear={clearSelection} />
       <FlatList
         data={assets}
         keyExtractor={(item) => item.id}
@@ -257,7 +256,7 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
   },
   dimOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(65, 105, 225, 0.28)',
+    backgroundColor: 'rgba(30, 64, 175, 0.28)',
   },
   checkOverlay: { position: 'absolute', top: 6, right: 6 },
   checkCircle: {

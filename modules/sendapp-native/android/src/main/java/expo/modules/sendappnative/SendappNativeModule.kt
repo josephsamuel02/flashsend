@@ -174,8 +174,11 @@ class SendappNativeModule : Module() {
           // fall through to fallback
         }
 
-        // ── Fallback: getInstalledApplications filtered by launchable (needs QUERY_ALL_PACKAGES or correct <queries>) ──
-        if (appsMap.isEmpty()) {
+        // ── Merge: getInstalledApplications filtered by launchable ──
+        // Always merge (not only when empty): queryIntentActivities is subject
+        // to package-visibility filtering on API 30+ and can miss apps, so
+        // union with the full installed list to show every launchable app.
+        run {
           @Suppress("DEPRECATION")
           val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()))

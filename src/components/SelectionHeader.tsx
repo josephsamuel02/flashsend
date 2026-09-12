@@ -5,15 +5,14 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSelectionStore } from '../store/selectionStore';
-import { useColors, type ThemeColors, Spacing, FontSize, BorderRadius } from '../theme/colors';
+import { useColors, type ThemeColors, Spacing, FontSize } from '../theme/colors';
 
 interface Props {
-  onSelectAll: () => void;
   onClear: () => void;
   tabName: string;
 }
 
-export default function SelectionHeader({ onSelectAll, onClear, tabName }: Props) {
+export default function SelectionHeader({ onClear, tabName }: Props) {
   const C = useColors();
   const styles = React.useMemo(() => getStyles(C), [C]);
   const count = useSelectionStore((s) => Object.keys(s.selectedFiles).length);
@@ -32,9 +31,11 @@ export default function SelectionHeader({ onSelectAll, onClear, tabName }: Props
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity onPress={onClear} style={styles.clearButton} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <MaterialIcons name="close" size={20} color={C.textPrimary} />
-      </TouchableOpacity>
+      {count > 1 && (
+        <TouchableOpacity onPress={onClear} style={styles.clearButton} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <MaterialIcons name="close" size={20} color={C.textPrimary} />
+        </TouchableOpacity>
+      )}
 
       <View style={{ flex: 1 }}>
         <Text style={styles.countText}>
@@ -42,11 +43,6 @@ export default function SelectionHeader({ onSelectAll, onClear, tabName }: Props
         </Text>
         {totalSize > 0 && <Text style={styles.sizeText}>{formatSize(totalSize)}</Text>}
       </View>
-
-      <TouchableOpacity onPress={onSelectAll} style={styles.selectAllButton}>
-        <MaterialIcons name="select-all" size={16} color={C.primary} />
-        <Text style={styles.selectAllText}>All</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -74,18 +70,5 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
     color: C.textMuted,
     fontSize: FontSize.xs,
     marginTop: 1,
-  },
-  selectAllButton: {
-    backgroundColor: C.primaryGlow,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.round,
-    borderWidth: 1,
-    borderColor: C.primary,
-  },
-  selectAllText: {
-    color: C.primaryLight,
-    fontSize: FontSize.sm,
-    fontWeight: '600',
   },
 });

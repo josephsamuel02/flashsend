@@ -4,6 +4,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
+  Text,
   FlatList,
   Image,
   TouchableOpacity,
@@ -129,13 +130,24 @@ export default function StatusTab() {
     );
   }
 
+  const renderEmpty = () => (
+    <View style={styles.emptyWrap}>
+      <MaterialIcons name="photo-library" size={64} color={C.surfaceBorder} />
+      <Text style={styles.emptyTitle}>No statuses found</Text>
+      <Text style={styles.emptySub}>
+        View a WhatsApp status first, then tap below to grant storage access and load them here.
+      </Text>
+      <StatusAccessButton onDone={() => checkAndLoad(true)} />
+    </View>
+  );
+
   const renderItem = ({ item }: { item: StatusItem }) => {
     const isVideo = item.mimeType.startsWith('video');
     const saving = savingId === item.id;
     const saved = savedId === item.id;
     return (
       <TouchableOpacity activeOpacity={0.85} onPress={() => openViewer(item)} style={styles.cell}>
-        <Image source={{ uri: item.uri }} style={styles.thumbnail} />
+        <Image source={{ uri: item.uri }} style={styles.thumbnail} fadeDuration={0} />
         {isVideo && (
           <View style={styles.playBadge} pointerEvents="none">
             <MaterialIcons name="play-arrow" size={18} color="white" />
@@ -185,6 +197,7 @@ export default function StatusTab() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => checkAndLoad(true)} colors={[C.primary]} />
           }
+          ListEmptyComponent={!loading && !refreshing ? renderEmpty() : null}
         />
       )}
     </View>
@@ -195,6 +208,15 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.background },
   gate: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.background, padding: 24 },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 12,
+  },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: C.textSecondary, textAlign: 'center' },
+  emptySub: { fontSize: 14, color: C.textMuted, textAlign: 'center', lineHeight: 22, maxWidth: 300 },
   grid: { paddingHorizontal: H_PAD, paddingTop: H_PAD },
   gridEmpty: { flexGrow: 1 },
   columnWrapper: { gap: GAP },

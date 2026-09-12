@@ -46,8 +46,8 @@ export default function PhotosTab() {
   const hasNextRef = useRef(true);
 
   const selectedFiles = useSelectionStore((s) => s.selectedFiles);
+  const selectionMode = useSelectionStore((s) => s.selectionMode);
   const toggleFile = useSelectionStore((s) => s.toggleFile);
-  const selectAll = useSelectionStore((s) => s.selectAll);
   const clearSelection = useSelectionStore((s) => s.clearSelection);
 
   const loadAssets = useCallback(async (cursor?: string, isRefresh = false) => {
@@ -134,10 +134,6 @@ export default function PhotosTab() {
 
   const handleToggle = (asset: MediaLibrary.Asset) => toggleFile(toSelected(asset));
 
-  const handleSelectAll = () => {
-    selectAll(assets.map(toSelected));
-  };
-
   const openViewer = useCallback(
     (asset: MediaLibrary.Asset) => {
       const viewerAssets: ViewerAsset[] = assets.map((a) => ({
@@ -161,12 +157,12 @@ export default function PhotosTab() {
     return (
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={() => openViewer(item)}
+        onPress={() => (selectionMode ? handleToggle(item) : openViewer(item))}
         onLongPress={() => handleToggle(item)}
         delayLongPress={350}
         style={[styles.cell, selected && styles.cellSelected]}
       >
-        <Image source={{ uri: item.uri }} style={styles.thumbnail} />
+        <Image source={{ uri: item.uri }} style={styles.thumbnail} fadeDuration={0} />
         {selected && <View style={styles.dimOverlay} />}
         {selected && (
           <View style={styles.checkOverlay}>
@@ -181,7 +177,7 @@ export default function PhotosTab() {
 
   return (
     <View style={styles.container}>
-      <SelectionHeader tabName="Photos" onSelectAll={handleSelectAll} onClear={clearSelection} />
+      <SelectionHeader tabName="Photos" onClear={clearSelection} />
       <FlatList
         data={assets}
         keyExtractor={(item) => item.id}
@@ -242,7 +238,7 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
   thumbnail: { width: '100%', height: '100%' },
   dimOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(65, 105, 225, 0.28)',
+    backgroundColor: 'rgba(30, 64, 175, 0.28)',
   },
   checkOverlay: {
     position: 'absolute',

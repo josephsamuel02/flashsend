@@ -18,6 +18,7 @@
     "@react-navigation/stack": "^7.0.0",
     "buffer": "^6.0.3",
     "expo": "~54.0.37",
+    "expo-audio": "~1.1.1",
     "expo-camera": "~17.0.10",
     "expo-dev-client": "~6.0.21",
     "expo-document-picker": "~14.0.8",
@@ -70,6 +71,7 @@
   },
   "allowScripts": {
     "expo": true,
+    "expo-audio": true,
     "expo-camera": true,
     "expo-dev-client": true,
     "expo-document-picker": true,

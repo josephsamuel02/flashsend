@@ -24,7 +24,7 @@ import MediaViewerScreen from '../screens/MediaViewerScreen';
 import { useSelectionStore } from '../store/selectionStore';
 import { useTransferStore } from '../store/transferStore';
 import { useSettingsStore } from '../store/settingsStore';
-import { useColors, type ThemeColors, Spacing, FontSize } from '../theme/colors';
+import { useColors, type ThemeColors, Spacing } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const Tab = createMaterialTopTabNavigator();
@@ -149,18 +149,8 @@ function TabNavigator() {
       {/* Top Branding Bar — Xender style */}
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
         <View style={styles.topBarContent}>
-          <TouchableOpacity
-            onPress={() => setDarkMode(!darkMode)}
-            style={styles.menuBtn}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <MaterialIcons name={darkMode ? 'light-mode' : 'dark-mode'} size={22} color="white" />
-          </TouchableOpacity>
           <Image source={require('../../assets/flash-send-icon.png')} style={styles.logo} resizeMode="cover" />
-          <View style={styles.brandWrap}>
-            <Text style={styles.brandTitle}>Flash Send</Text>
-            <Text style={styles.brandSub}>Android • WiFi Direct • No Internet Needed</Text>
-          </View>
+          <View style={styles.topBarSpacer} />
           {totalSelected > 0 && (
             <View style={styles.selectedPill}>
               <MaterialIcons name="check-circle" size={16} color={C.primary} />
@@ -173,6 +163,13 @@ function TabNavigator() {
               <Text style={styles.transferPillText}>Transfer</Text>
             </Pressable>
           )}
+          <TouchableOpacity
+            onPress={() => setDarkMode(!darkMode)}
+            style={styles.menuBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MaterialIcons name={darkMode ? 'light-mode' : 'dark-mode'} size={22} color="white" />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setMenuVisible(true)}
             style={styles.menuBtn}
@@ -218,9 +215,12 @@ function TabNavigator() {
             backgroundColor: C.primary,
             elevation: 0,
             shadowOpacity: 0,
+            shadowOffset: { width: 0, height: 0 },
+            shadowRadius: 0,
             borderTopWidth: 0,
+            borderBottomWidth: 0,
             paddingTop: 2,
-            height: 56,
+            height: 52,
           },
           tabBarIndicatorStyle: {
             backgroundColor: 'white',
@@ -230,15 +230,8 @@ function TabNavigator() {
           },
           tabBarActiveTintColor: 'white',
           tabBarInactiveTintColor: 'rgba(255,255,255,0.78)',
-          tabBarLabelStyle: {
-            fontSize: 10,
-            fontFamily: 'Inter_700Bold',
-            textTransform: 'uppercase',
-            letterSpacing: 0.6,
-            marginTop: 2,
-          },
+          tabBarShowLabel: false,
           tabBarItemStyle: {
-            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             paddingVertical: 4,
@@ -252,7 +245,6 @@ function TabNavigator() {
           name="Status"
           component={StatusTab}
           options={{
-            tabBarLabel: 'Status',
             tabBarIcon: ({ focused }) => <TabIcon name="message-circle" focused={focused} />,
           }}
         />
@@ -260,7 +252,6 @@ function TabNavigator() {
           name="Apps"
           component={AppsTab}
           options={{
-            tabBarLabel: 'Apps',
             tabBarIcon: ({ focused }) => <TabIcon name="grid" focused={focused} badge={totalByTab.Apps} />,
           }}
         />
@@ -268,7 +259,6 @@ function TabNavigator() {
           name="Photos"
           component={PhotosTab}
           options={{
-            tabBarLabel: 'Photos',
             tabBarIcon: ({ focused }) => <TabIcon name="image" focused={focused} badge={totalByTab.Photos} />,
           }}
         />
@@ -276,7 +266,6 @@ function TabNavigator() {
           name="Videos"
           component={VideosTab}
           options={{
-            tabBarLabel: 'Videos',
             tabBarIcon: ({ focused }) => <TabIcon name="video" focused={focused} badge={totalByTab.Videos} />,
           }}
         />
@@ -284,7 +273,6 @@ function TabNavigator() {
           name="Audio"
           component={AudioTab}
           options={{
-            tabBarLabel: 'Audio',
             tabBarIcon: ({ focused }) => <TabIcon name="music" focused={focused} badge={totalByTab.Audio} />,
           }}
         />
@@ -292,7 +280,6 @@ function TabNavigator() {
           name="Files"
           component={FilesTab}
           options={{
-            tabBarLabel: 'Files',
             tabBarIcon: ({ focused }) => <TabIcon name="folder" focused={focused} badge={totalByTab.Files} />,
           }}
         />
@@ -323,18 +310,14 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
     backgroundColor: C.primary,
     paddingBottom: 10,
     paddingHorizontal: Spacing.md,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.22,
-    shadowRadius: 6,
+    elevation: 0,
+    shadowOpacity: 0,
+    borderBottomWidth: 0,
     zIndex: 10,
   },
-  topBarContent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  logo: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'white' },
-  brandWrap: { flex: 1 },
-  brandTitle: { color: 'white', fontFamily: 'Outfit_800ExtraBold', fontSize: 18, letterSpacing: 0.2 },
-  brandSub: { color: 'rgba(255,255,255,0.88)', fontFamily: 'Inter_500Medium', fontSize: 11, marginTop: 1 },
+  topBarContent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  logo: { width: 39, height: 39, borderRadius: 11, backgroundColor: 'white' },
+  topBarSpacer: { flex: 1 },
   selectedPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -364,7 +347,7 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
   menuBox: {
     position: 'absolute',
     right: 12,
-    backgroundColor: 'white',
+    backgroundColor: C.surface,
     borderRadius: 12,
     minWidth: 180,
     elevation: 8,

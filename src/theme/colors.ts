@@ -32,21 +32,21 @@ export interface Palette {
 }
 
 export const Colors: Palette = {
-  // Backgrounds - white for most of the app, royal blue for navigation
+  // Backgrounds - white for most of the app, dark blue for navigation
   background: '#FFFFFF',
   surface: '#FFFFFF',
   surfaceElevated: '#F5F5F5',
   surfaceBorder: '#E0E0E0',
 
-  // Royal Blue - primary color for navigation and accents
-  primary: '#4169E1', // RoyalBlue
-  primaryLight: '#6487E8',
-  primaryDark: '#2E50B3',
-  primaryGlow: 'rgba(65, 105, 225, 0.2)',
+  // Dark Blue - primary color for navigation and accents
+  primary: '#1E40AF', // DarkBlue
+  primaryLight: '#3B82F6',
+  primaryDark: '#1E3A8A',
+  primaryGlow: 'rgba(30, 64, 175, 0.2)',
 
-  // Secondary - same royal blue theme
-  secondary: '#4169E1',
-  secondaryLight: '#6487E8',
+  // Secondary - same dark blue theme
+  secondary: '#1E40AF',
+  secondaryLight: '#3B82F6',
 
   // Semantic
   success: '#0E9F6E',
@@ -62,12 +62,12 @@ export const Colors: Palette = {
   textDisabled: '#D1D5DB',
 
   // FAB colors - royal blue with white icons
-  fabSend: '#4169E1',
-  fabReceive: '#4169E1',
+  fabSend: '#1E40AF',
+  fabReceive: '#1E40AF',
 
   // Gradients (as arrays for LinearGradient)
-  gradientPrimary: ['#4169E1', '#2E50B3'] as const,
-  gradientSecondary: ['#4169E1', '#2E50B3'] as const,
+  gradientPrimary: ['#1E40AF', '#1E3A8A'] as const,
+  gradientSecondary: ['#1E40AF', '#1E3A8A'] as const,
   gradientSuccess: ['#0E9F6E', '#057A55'] as const,
   gradientCard: ['#FFFFFF', '#F5F5F5'] as const,
 };
@@ -79,15 +79,15 @@ export const DarkColors: Palette = {
   surfaceElevated: '#1D2640',
   surfaceBorder: '#2C3A5C',
 
-  // Royal Blue - kept for brand surfaces
-  primary: '#4169E1',
-  primaryLight: '#7C9BF5',
-  primaryDark: '#2E50B3',
-  primaryGlow: 'rgba(124, 155, 245, 0.25)',
+  // Dark Blue - kept for brand surfaces
+  primary: '#1E40AF',
+  primaryLight: '#5B8DEF',
+  primaryDark: '#1E3A8A',
+  primaryGlow: 'rgba(30, 64, 175, 0.35)',
 
   // Secondary
-  secondary: '#7C9BF5',
-  secondaryLight: '#9DB4F7',
+  secondary: '#3B82F6',
+  secondaryLight: '#93B4F5',
 
   // Semantic
   success: '#2FBF8F',
@@ -103,12 +103,12 @@ export const DarkColors: Palette = {
   textDisabled: '#3B4763',
 
   // FAB colors - royal blue with white icons
-  fabSend: '#4169E1',
-  fabReceive: '#4169E1',
+  fabSend: '#1E40AF',
+  fabReceive: '#1E40AF',
 
   // Gradients (as arrays for LinearGradient)
-  gradientPrimary: ['#4169E1', '#2E50B3'] as const,
-  gradientSecondary: ['#4169E1', '#2E50B3'] as const,
+  gradientPrimary: ['#1E40AF', '#1E3A8A'] as const,
+  gradientSecondary: ['#1E40AF', '#1E3A8A'] as const,
   gradientSuccess: ['#2FBF8F', '#0E9F6E'] as const,
   gradientCard: ['#151C31', '#1D2640'] as const,
 };

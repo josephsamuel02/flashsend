@@ -1,5 +1,6 @@
 // src/components/StatusAccessButton.tsx
-// Single "Get Status" button. Opens the system All-files-access page.
+// Single "Get WhatsApp Status" button. Opens the system All-files-access page
+// (storage permission), then reloads the status list.
 
 import React, { useState } from 'react';
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
@@ -30,7 +31,7 @@ export default function StatusAccessButton({ onDone }: { onDone?: () => void }) 
       ) : (
         <MaterialIcons name="folder-open" size={20} color="white" />
       )}
-      <Text style={styles.text}>Get Status</Text>
+      <Text style={styles.text}>Get WhatsApp Status</Text>
     </TouchableOpacity>
   );
 }

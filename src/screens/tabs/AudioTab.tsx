@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSelectionStore, SelectedFile } from '../../store/selectionStore';
@@ -45,8 +46,11 @@ export default function AudioTab() {
 
   const selectedFiles = useSelectionStore((s) => s.selectedFiles);
   const toggleFile = useSelectionStore((s) => s.toggleFile);
-  const selectAll = useSelectionStore((s) => s.selectAll);
   const clearSelection = useSelectionStore((s) => s.clearSelection);
+
+  const player = useAudioPlayer();
+  const status = useAudioPlayerStatus(player);
+  const [playingId, setPlayingId] = useState<string | null>(null);
 
   const loadAssets = useCallback(async (cursor?: string, isRefresh = false) => {
     if (loadingRef.current) return;
@@ -115,10 +119,39 @@ export default function AudioTab() {
   });
 
   const handleToggle = (a: MediaLibrary.Asset) => toggleFile(toSelected(a));
-  const handleSelectAll = () => selectAll(assets.map(toSelected));
+
+  const handlePlayPause = useCallback(
+    (a: MediaLibrary.Asset) => {
+      try {
+        if (playingId === a.id && status.playing) {
+          player.pause();
+        } else if (playingId === a.id) {
+          player.play();
+        } else {
+          setPlayingId(a.id);
+          player.replace({ uri: a.uri });
+          player.play();
+        }
+      } catch (err) {
+        console.warn('[Audio] playback failed:', err);
+      }
+    },
+    [playingId, status.playing, player]
+  );
+
+  // Stop playback when leaving the tab
+  useEffect(() => {
+    return () => {
+      try {
+        player.pause();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const renderItem = ({ item }: { item: MediaLibrary.Asset }) => {
     const selected = !!selectedFiles[item.id];
+    const isPlaying = playingId === item.id && status.playing;
     return (
       <TouchableOpacity
         onPress={() => handleToggle(item)}
@@ -140,18 +173,21 @@ export default function AudioTab() {
             {formatDuration(item.duration)} • {item.filename.split('.').pop()?.toUpperCase()}
           </Text>
         </View>
-        {selected ? (
-          <MaterialIcons name="check-circle" size={22} color={C.primary} />
-        ) : (
-          <MaterialIcons name="chevron-right" size={20} color={C.textMuted} />
-        )}
+        <TouchableOpacity
+          onPress={() => handlePlayPause(item)}
+          style={[styles.playBtn, isPlaying && styles.playBtnActive]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons name={isPlaying ? 'pause' : 'play-arrow'} size={24} color={isPlaying ? 'white' : C.primary} />
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
 
   return (
     <View style={styles.container}>
-      <SelectionHeader tabName="Audio" onSelectAll={handleSelectAll} onClear={clearSelection} />
+      <SelectionHeader tabName="Audio" onClear={clearSelection} />
       <FlatList
         data={assets}
         keyExtractor={(item) => item.id}
@@ -208,6 +244,17 @@ const getStyles = (C: ThemeColors) => StyleSheet.create({
     borderColor: C.surfaceBorder,
   },
   iconBoxSelected: { backgroundColor: C.primary, borderColor: C.primary },
+  playBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.surfaceBorder,
+  },
+  playBtnActive: { backgroundColor: C.primary, borderColor: C.primary },
   info: { flex: 1 },
   fileName: { color: C.textPrimary, fontSize: FontSize.md, fontWeight: '600' },
   meta: { color: C.textSecondary, fontSize: FontSize.sm, marginTop: 2 },

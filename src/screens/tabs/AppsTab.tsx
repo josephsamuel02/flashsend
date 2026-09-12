@@ -60,7 +60,6 @@ export default function AppsTab() {
 
   const selectedFiles = useSelectionStore((s) => s.selectedFiles);
   const toggleFile = useSelectionStore((s) => s.toggleFile);
-  const selectAll = useSelectionStore((s) => s.selectAll);
 
   const loadInstalledApps = useCallback(async (isRefresh = false) => {
     try {
@@ -121,6 +120,10 @@ export default function AppsTab() {
 
   const filteredUserApps = useMemo(() => filteredApps.filter((a) => !a.isSystemApp), [filteredApps]);
   const filteredSystemApps = useMemo(() => filteredApps.filter((a) => !!a.isSystemApp), [filteredApps]);
+  const markedCount = useMemo(
+    () => filteredApps.filter((a) => !!selectedFiles[a.id]).length,
+    [filteredApps, selectedFiles]
+  );
 
   const handleSelectApp = useCallback((app: AppWithSelection) => {
     const apkSize = getApkSize(app.packageName) || 0;
@@ -134,18 +137,6 @@ export default function AppsTab() {
     };
     toggleFile(file);
   }, [toggleFile]);
-
-  const handleSelectAll = useCallback(() => {
-    const files: SelectedFile[] = filteredApps.map((app) => ({
-      id: app.id,
-      name: `${app.name}.apk`,
-      uri: app.packageName,
-      size: getApkSize(app.packageName) || 0,
-      mimeType: 'application/vnd.android.package-archive',
-      tab: 'Apps' as const,
-    }));
-    selectAll(files);
-  }, [filteredApps, selectAll]);
 
   const handleDeselectAll = useCallback(() => {
     // Deselect only filtered (visible) apps if searching, otherwise clear all Apps
@@ -270,14 +261,12 @@ export default function AppsTab() {
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity onPress={handleSelectAll} style={styles.actionButton}>
-          <MaterialIcons name="select-all" size={16} color={C.primary} />
-          <Text style={styles.actionText}>All</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleDeselectAll} style={[styles.actionButton, styles.actionButtonClear]}>
-          <MaterialIcons name="clear" size={16} color={C.textSecondary} />
-          <Text style={[styles.actionText, { color: C.textSecondary }]}>Clear</Text>
-        </TouchableOpacity>
+        {markedCount > 1 && (
+          <TouchableOpacity onPress={handleDeselectAll} style={[styles.actionButton, styles.actionButtonClear]}>
+            <MaterialIcons name="clear" size={16} color={C.textSecondary} />
+            <Text style={[styles.actionText, { color: C.textSecondary }]}>Clear</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {error && (

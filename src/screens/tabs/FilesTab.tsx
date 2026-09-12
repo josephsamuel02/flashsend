@@ -123,7 +123,6 @@ export default function FilesTab() {
 
   const selectedFiles = useSelectionStore((s) => s.selectedFiles);
   const toggleFile = useSelectionStore((s) => s.toggleFile);
-  const selectAll = useSelectionStore((s) => s.selectAll);
   const clearSelection = useSelectionStore((s) => s.clearSelection);
 
   const isNativeAvailable = !!listDirectoryNative;
@@ -296,24 +295,6 @@ export default function FilesTab() {
     }
   }, [toggleFile]);
 
-  const visibleFiles = useMemo(() => {
-    // Files (not folders) in current entries that are selectable
-    return entries.filter(e => !e.isDirectory);
-  }, [entries]);
-
-  const handleSelectAllVisible = useCallback(() => {
-    // Select all files in current directory (biggest first already) plus pickedFiles?
-    const filesToSelect: SelectedFile[] = visibleFiles.map(e => ({
-      id: e.path, // use path as id
-      name: e.name,
-      uri: `file://${e.path}`,
-      size: e.size,
-      mimeType: e.mimeType,
-      tab: 'Files' as const,
-    }));
-    selectAll(filesToSelect);
-  }, [visibleFiles, selectAll]);
-
   const handleToggleFile = useCallback((entry: FileEntry) => {
     const file: SelectedFile = {
       id: entry.path,
@@ -375,7 +356,7 @@ export default function FilesTab() {
     // Fallback old picker UI but keep header
     return (
       <View style={styles.container}>
-        <SelectionHeader tabName="Files" onSelectAll={() => selectAll(pickedFiles)} onClear={clearSelection} />
+        <SelectionHeader tabName="Files" onClear={clearSelection} />
         <View style={styles.notice}>
           <MaterialIcons name="folder-open" size={20} color={C.warning} />
           <Text style={styles.noticeText}>Native file browser requires dev-client rebuild. Use Browse to pick files. After rebuild you'll see folders sorted biggest-first.</Text>
@@ -425,7 +406,7 @@ export default function FilesTab() {
 
   return (
     <View style={styles.container}>
-      <SelectionHeader tabName="Files" onSelectAll={handleSelectAllVisible} onClear={clearSelection} />
+      <SelectionHeader tabName="Files" onClear={clearSelection} />
 
       {/* Path + quick actions */}
       <View style={styles.pathBar}>
